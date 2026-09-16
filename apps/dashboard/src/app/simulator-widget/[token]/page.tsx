@@ -10,40 +10,90 @@ import {
   Sparkles,
   CheckCircle2,
   HelpCircle,
-  Laptop
+  Laptop,
+  AlertTriangle
 } from "lucide-react";
 
 export default function WidgetSimulatorPage() {
   const params = useParams();
   const token = params?.token as string;
+  const [project, setProject] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [scriptLoaded, setScriptLoaded] = useState(false);
 
   useEffect(() => {
     if (!token) return;
 
-    // Bersihkan script lama jika ada
-    const existingScript = document.querySelector(`script[data-token="${token}"]`);
-    if (existingScript) {
-      existingScript.remove();
-    }
+    // 1. Verifikasi keberadaan proyek dari backend
+    fetch(`http://localhost:4000/api/widget/init?token=${token}`)
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || "Proyek / Widget tidak ditemukan");
+        }
+        setProject(data.project);
 
-    // Pasang script widget.js secara dinamis
-    const script = document.createElement("script");
-    script.src = "http://localhost:4000/widget.js";
-    script.setAttribute("data-token", token);
-    script.defer = true;
-    script.onload = () => {
-      setScriptLoaded(true);
-    };
-    document.body.appendChild(script);
+        // 2. Jika valid, bersihkan script lama jika ada
+        const existingScript = document.querySelector(`script[data-token="${token}"]`);
+        if (existingScript) {
+          existingScript.remove();
+        }
+
+        // 3. Pasang script widget.js secara dinamis
+        const script = document.createElement("script");
+        script.src = "http://localhost:4000/widget.js";
+        script.setAttribute("data-token", token);
+        script.defer = true;
+        script.onload = () => {
+          setScriptLoaded(true);
+        };
+        document.body.appendChild(script);
+      })
+      .catch((err) => {
+        setError(err.message || "Proyek / Widget tidak ditemukan");
+      })
+      .finally(() => {
+        setLoading(false);
+      });
 
     return () => {
       // Cleanup script & widget container saat keluar
-      script.remove();
-      const container = document.getElementById("livechat-widget-container");
+      const script = document.querySelector(`script[data-token="${token}"]`);
+      if (script) script.remove();
+      const container = document.getElementById("livechat-widget-root") || document.getElementById("livechat-widget-container");
       if (container) container.remove();
     };
   }, [token]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400">
+        <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4" />
+        <p className="text-sm font-medium">Memverifikasi status widget simulator...</p>
+      </div>
+    );
+  }
+
+  if (error || !project) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400 p-4 text-center">
+        <div className="w-16 h-16 bg-red-500/10 text-red-400 rounded-2xl flex items-center justify-center mb-4">
+          <AlertTriangle className="w-8 h-8" />
+        </div>
+        <h1 className="text-xl font-bold text-white mb-2">Simulator Gagal: Widget Tidak Ditemukan</h1>
+        <p className="text-sm text-slate-500 max-w-sm mb-6">
+          {error || "Proyek atau widget ini tidak ditemukan di server. Ruang komunitas mungkin telah dihapus secara permanen oleh Admin."}
+        </p>
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition shadow-lg shadow-indigo-600/30"
+        >
+          <ArrowLeft className="w-4 h-4" /> Kembali ke Dashboard
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans">
@@ -55,7 +105,7 @@ export default function WidgetSimulatorPage() {
               Simulasi Embed
             </span>
             <span className="text-slate-200">
-              Ini adalah contoh website klien dummy. Perhatikan <strong>tombol chat bulat di pojok kanan bawah layar</strong>! 👇
+              Menampilkan widget untuk ruang <strong>{project.name}</strong>. Perhatikan <strong>tombol chat bulat di pojok kanan bawah layar</strong>! 👇
             </span>
           </div>
           <Link
@@ -88,13 +138,13 @@ export default function WidgetSimulatorPage() {
       {/* HERO SECTION */}
       <header className="max-w-5xl mx-auto py-16 px-6 text-center">
         <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs rounded-full font-semibold mb-4">
-          <Sparkles className="w-3.5 h-3.5" /> Demo Live Chat Embed
+          <Sparkles className="w-3.5 h-3.5" /> Demo Live Chat: {project.name}
         </div>
         <h1 className="text-4xl md:text-5xl font-extrabold text-slate-900 tracking-tight leading-tight">
           Website Klien Anda Sedang Berjalan
         </h1>
         <p className="mt-4 text-slate-600 max-w-xl mx-auto text-base">
-          Script widget Anda telah disisipkan ke halaman ini. Cobalah klik <strong>ikon chat di pojok kanan bawah</strong> untuk mengirim pesan uji coba!
+          Script widget untuk <strong>{project.name}</strong> telah disisipkan ke halaman ini. Cobalah klik <strong>ikon chat di pojok kanan bawah</strong> untuk mengirim pesan uji coba!
         </p>
 
         <div className="mt-8 flex justify-center gap-3">

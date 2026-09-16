@@ -1,8 +1,10 @@
 import { db } from "@livechat/database";
 
-// Ambil argumen dari terminal: bun run seed:admin <email> <password> "<nama>"
+// Ambil argumen dari terminal: bun run seed:admin <email> <password> <nama>
 const args = process.argv.slice(2);
-const [email, password, name] = args;
+const email = args[0];
+const password = args[1];
+const name = args.slice(2).join(" "); // Gabungkan argumen ketiga dan seterusnya menjadi satu nama
 
 if (!email || !password || !name) {
   console.log(`

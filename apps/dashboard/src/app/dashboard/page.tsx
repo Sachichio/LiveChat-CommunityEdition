@@ -9,13 +9,18 @@ import {
   Code,
   Copy,
   Check,
-  User,
-  Radio,
   Plus,
-  Inbox,
   ExternalLink,
   Laptop,
-  Shield
+  Shield,
+  Crown,
+  Users,
+  Settings,
+  Ban,
+  Clock,
+  AlertTriangle,
+  Trash2,
+  HelpCircle
 } from "lucide-react";
 
 interface Project {
@@ -23,34 +28,34 @@ interface Project {
   name: string;
   domain: string;
   widgetToken: string;
-}
-
-interface ChatSession {
-  id: string;
-  visitorId: string;
-  visitorName: string | null;
-  memberId?: string | null;
-  status: string;
-  updatedAt: string;
-  messages: any[];
+  _count?: { messages: number };
+  messages?: { content: string; attachmentUrl?: string | null; senderName: string; createdAt: string }[];
+  settings?: {
+    slowModeSeconds: number;
+    filterEnabled: boolean;
+    filterMode: "CENSOR" | "REJECT";
+    bannedWords?: string | null;
+  };
 }
 
 interface Message {
   id: string;
+  projectId: string;
   senderType: "VISITOR" | "AGENT" | "MEMBER";
-  senderId: string;
+  senderName: string;
+  senderId?: string | null;
   content: string;
   attachmentUrl?: string | null;
   createdAt: string;
+  isSystem?: boolean;
 }
 
 export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [selectedSession, setSelectedSession] = useState<ChatSession | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState("");
   const [copied, setCopied] = useState(false);
@@ -59,6 +64,18 @@ export default function DashboardPage() {
   const [uploading, setUploading] = useState(false);
   const [lightboxImg, setLightboxImg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Moderation Settings State
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<"moderation" | "banned">("moderation");
+  const [slowModeSeconds, setSlowModeSeconds] = useState(0);
+  const [filterEnabled, setFilterEnabled] = useState(false);
+  const [filterMode, setFilterMode] = useState<"CENSOR" | "REJECT">("CENSOR");
+  const [bannedWords, setBannedWords] = useState("");
+  const [bannedUsers, setBannedUsers] = useState<any[]>([]);
+  const [newBanName, setNewBanName] = useState("");
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
 
   const socketRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -72,32 +89,35 @@ export default function DashboardPage() {
     scrollToBottom();
   }, [messages]);
 
-  // Auth check dengan Role Guard
+  // Cek Auth & Load Proyek
   useEffect(() => {
     const token = localStorage.getItem("livechat_token");
-    const storedUser = localStorage.getItem("livechat_user");
-    if (!token || !storedUser) {
+    if (!token) {
       router.push("/login");
       return;
     }
-    try {
-      const parsed = JSON.parse(storedUser);
-      if (parsed.role !== "ADMIN" && parsed.role !== "AGENT") {
-        alert("Akses Ditolak: Halaman Dashboard hanya dapat diakses oleh Admin.");
+
+    // Ambil info profile
+    fetch("http://localhost:4000/api/auth/me", {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Unauthorized");
+        return res.json();
+      })
+      .then((data) => {
+        setUser(data.user);
+        loadProjects(token);
+        setIsAuthChecking(false);
+      })
+      .catch(() => {
         localStorage.removeItem("livechat_token");
         localStorage.removeItem("livechat_user");
         router.push("/login");
-        return;
-      }
-      setUser(parsed);
-      fetchProjects(token);
-    } catch {
-      router.push("/login");
-    }
-  }, []);
+      });
+  }, [router]);
 
-  // Fetch projects
-  const fetchProjects = async (token: string) => {
+  const loadProjects = async (token: string) => {
     try {
       const res = await fetch("http://localhost:4000/api/projects", {
         headers: { Authorization: `Bearer ${token}` }
@@ -106,62 +126,80 @@ export default function DashboardPage() {
       if (data.projects) {
         setProjects(data.projects);
         if (data.projects.length > 0) {
-          setSelectedProject(data.projects[0]);
+          setSelectedProject((prev) => {
+            if (!prev) {
+              handleSelectProject(data.projects[0]);
+              return data.projects[0];
+            }
+            return prev;
+          });
         }
       }
     } catch (err) {
-      console.error(err);
+      console.error("Gagal memuat proyek:", err);
     }
   };
 
-  // Fetch sessions when project changes
-  useEffect(() => {
-    if (!selectedProject) return;
+  const handleSelectProject = async (project: Project) => {
+    setSelectedProject(project);
     const token = localStorage.getItem("livechat_token");
     if (!token) return;
 
-    const fetchSessions = async () => {
-      try {
-        const res = await fetch(
-          `http://localhost:4000/api/sessions/by-project/${selectedProject.id}`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        const data = await res.json();
-        if (data.sessions) {
-          setSessions(data.sessions);
-          if (data.sessions.length > 0) {
-            handleSelectSession(data.sessions[0]);
-          } else {
-            setSelectedSession(null);
-            setMessages([]);
-          }
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchSessions();
-  }, [selectedProject]);
-
-  // Select a session and connect to WebSocket
-  const handleSelectSession = async (session: ChatSession) => {
-    setSelectedSession(session);
-
-    // Fetch message history
+    // Load pesan
     try {
-      const res = await fetch(
-        `http://localhost:4000/api/sessions/${session.id}/messages`
-      );
+      const res = await fetch(`http://localhost:4000/api/projects/${project.id}/messages`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       const data = await res.json();
       if (data.messages) {
         setMessages(data.messages);
       }
     } catch (err) {
-      console.error(err);
+      console.error("Gagal memuat pesan:", err);
     }
 
-    // Connect WebSocket
+    // Load settings proyek
+    loadProjectSettings(project.id, token);
+
+    // Sambungkan WebSocket
+    connectWebSocket(project);
+  };
+
+  const loadProjectSettings = async (projectId: string, token: string) => {
+    try {
+      const res = await fetch(`http://localhost:4000/api/projects/${projectId}/settings`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.settings) {
+        setSlowModeSeconds(data.settings.slowModeSeconds || 0);
+        setFilterEnabled(Boolean(data.settings.filterEnabled));
+        setFilterMode(data.settings.filterMode || "CENSOR");
+        setBannedWords(data.settings.bannedWords || "");
+      }
+    } catch (err) {
+      console.error("Gagal memuat pengaturan proyek:", err);
+    }
+  };
+
+  const loadBannedUsers = async (projectId: string) => {
+    const token = localStorage.getItem("livechat_token");
+    if (!token) return;
+
+    try {
+      const res = await fetch(`http://localhost:4000/api/projects/${projectId}/banned`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.bannedUsers) {
+        setBannedUsers(data.bannedUsers);
+      }
+    } catch (err) {
+      console.error("Gagal memuat pengguna diblokir:", err);
+    }
+  };
+
+  const connectWebSocket = (project: Project) => {
     if (socketRef.current) {
       socketRef.current.close();
     }
@@ -173,9 +211,8 @@ export default function DashboardPage() {
       ws.send(
         JSON.stringify({
           type: "join",
-          sessionId: session.id,
-          senderType: "AGENT",
-          senderId: user?.id || "agent"
+          projectId: project.id,
+          token: project.widgetToken
         })
       );
     };
@@ -183,30 +220,86 @@ export default function DashboardPage() {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+
+        // 1. Pesan Baru
         if (data.type === "new_message" && data.message) {
-          setMessages((prev) => {
-            // Cek jika pesan sudah ada
-            if (prev.some((m) => m.id === data.message.id)) return prev;
-            return [...prev, data.message];
-          });
+          const newMsg: Message = data.message;
+          if (newMsg.projectId === project.id) {
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === newMsg.id)) return prev;
+              return [...prev, newMsg];
+            });
+          }
+
+          // Perbarui cuplikan pesan di sidebar projects
+          setProjects((prevProjects) =>
+            prevProjects.map((p) => {
+              if (p.id === newMsg.projectId) {
+                return {
+                  ...p,
+                  _count: { messages: (p._count?.messages || 0) + 1 },
+                  messages: [
+                    {
+                      content: newMsg.content,
+                      attachmentUrl: newMsg.attachmentUrl,
+                      senderName: newMsg.senderName,
+                      createdAt: newMsg.createdAt
+                    }
+                  ]
+                };
+              }
+              return p;
+            })
+          );
         }
-      } catch (e) {
-        console.error("WS Parse error", e);
+
+        // 2. Notifikasi Sistem (Ban / Unban / Slow Mode)
+        if (data.type === "system" && data.message) {
+          const sysMsg: Message = {
+            id: "sys-" + Date.now() + "-" + Math.random(),
+            projectId: project.id,
+            senderType: "AGENT",
+            senderName: "Sistem",
+            content: data.message,
+            createdAt: new Date().toISOString(),
+            isSystem: true
+          };
+          setMessages((prev) => [...prev, sysMsg]);
+        }
+
+        // 3. Update Slow Mode
+        if (data.type === "slow_mode_update") {
+          setSlowModeSeconds(data.seconds);
+        }
+
+        // 4. Error Toast
+        if (data.type === "error" && data.message) {
+          setErrorToast(data.message);
+          setTimeout(() => setErrorToast(null), 5000);
+        }
+
+        // 5. Pesan Dihapus Realtime
+        if (data.type === "message_deleted" && data.messageId) {
+          setMessages((prev) => prev.filter((m) => m.id !== data.messageId));
+        }
+      } catch (err) {
+        console.error("Gagal memproses pesan WS:", err);
       }
     };
   };
 
-  // Send message
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputMessage.trim() || !selectedSession || !socketRef.current) return;
+    if (!inputMessage.trim() || !selectedProject || !socketRef.current) return;
 
     socketRef.current.send(
       JSON.stringify({
         type: "message",
-        sessionId: selectedSession.id,
+        projectId: selectedProject.id,
+        token: selectedProject.widgetToken,
         senderType: "AGENT",
-        senderId: user?.id || "agent",
+        senderName: user?.name || "Admin",
+        senderId: user?.id,
         content: inputMessage.trim()
       })
     );
@@ -214,21 +307,17 @@ export default function DashboardPage() {
     setInputMessage("");
   };
 
-  // Upload file attachment (max 5MB, image only)
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !selectedSession || !socketRef.current) return;
+    if (!file || !selectedProject || !socketRef.current) return;
 
     if (!file.type.startsWith("image/")) {
-      alert("Hanya file gambar (PNG, JPG, JPEG, GIF, WEBP) yang diperbolehkan!");
-      e.target.value = "";
+      alert("Hanya file gambar (PNG, JPG, GIF, WEBP) yang diperbolehkan!");
       return;
     }
 
-    const MAX_SIZE = 5 * 1024 * 1024;
-    if (file.size > MAX_SIZE) {
+    if (file.size > 5 * 1024 * 1024) {
       alert("Ukuran gambar terlalu besar! Maksimal 5 MB.");
-      e.target.value = "";
       return;
     }
 
@@ -242,32 +331,198 @@ export default function DashboardPage() {
         body: formData
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Gagal mengunggah file");
+
+      if (!res.ok) {
+        alert(data.error || "Gagal mengunggah gambar!");
+        return;
+      }
 
       socketRef.current.send(
         JSON.stringify({
           type: "message",
-          sessionId: selectedSession.id,
+          projectId: selectedProject.id,
+          token: selectedProject.widgetToken,
           senderType: "AGENT",
-          senderId: user?.id || "agent",
+          senderName: user?.name || "Admin",
+          senderId: user?.id,
           content: inputMessage.trim() || "",
           attachmentUrl: data.url
         })
       );
+
       setInputMessage("");
+      if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (err: any) {
-      alert(err.message || "Gagal mengunggah gambar");
+      alert("Terjadi kesalahan jaringan saat mengunggah gambar: " + err.message);
     } finally {
       setUploading(false);
-      e.target.value = "";
     }
   };
 
-  // Create project
+  // 1-Click Ban User dari bubble chat
+  const handleQuickBan = async (targetName: string) => {
+    if (!selectedProject || !socketRef.current) return;
+    if (confirm(`Apakah Anda yakin ingin memblokir "${targetName}" dari ruang obrolan ini?`)) {
+      socketRef.current.send(
+        JSON.stringify({
+          type: "message",
+          projectId: selectedProject.id,
+          token: selectedProject.widgetToken,
+          senderType: "AGENT",
+          senderName: user?.name || "Admin",
+          senderId: user?.id,
+          content: `/ban ${targetName}`
+        })
+      );
+    }
+  };
+
+  // Hapus Pesan Obrolan (Admin)
+  const handleDeleteMessage = (messageId: string) => {
+    if (!selectedProject || !socketRef.current) return;
+    if (confirm("Apakah Anda yakin ingin menghapus pesan ini untuk semua orang?")) {
+      socketRef.current.send(
+        JSON.stringify({
+          type: "delete_message",
+          token: selectedProject.widgetToken,
+          projectId: selectedProject.id,
+          senderType: "AGENT",
+          messageId
+        })
+      );
+    }
+  };
+
+  // Hapus Proyek (Danger Zone)
+  const handleDeleteProject = async () => {
+    if (!selectedProject) return;
+    const token = localStorage.getItem("livechat_token");
+    if (!token) return;
+
+    const confirmation = prompt(
+      `⚠️ PERINGATAN: Tindakan ini permanen!\nKetik nama proyek "${selectedProject.name}" untuk mengonfirmasi penghapusan:`
+    );
+
+    if (confirmation !== selectedProject.name) {
+      if (confirmation !== null) {
+        alert("Nama proyek yang Anda ketik tidak cocok. Penghapusan dibatalkan.");
+      }
+      return;
+    }
+
+    try {
+      const res = await fetch(`http://localhost:4000/api/projects/${selectedProject.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (res.ok) {
+        alert("✅ Proyek dan seluruh riwayatnya berhasil dihapus.");
+        setShowSettingsModal(false);
+        const remainingProjects = projects.filter((p) => p.id !== selectedProject.id);
+        setProjects(remainingProjects);
+        if (remainingProjects.length > 0) {
+          handleSelectProject(remainingProjects[0]);
+        } else {
+          setSelectedProject(null);
+          setMessages([]);
+        }
+      } else {
+        const err = await res.json();
+        alert(err.error || "Gagal menghapus proyek.");
+      }
+    } catch (err: any) {
+      alert("Terjadi kesalahan: " + err.message);
+    }
+  };
+
+  // Simpan Pengaturan Moderasi
+  const handleSaveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedProject) return;
+    const token = localStorage.getItem("livechat_token");
+    if (!token) return;
+
+    setSavingSettings(true);
+    try {
+      const res = await fetch(`http://localhost:4000/api/projects/${selectedProject.id}/settings`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          slowModeSeconds: Number(slowModeSeconds) || 0,
+          filterEnabled,
+          filterMode,
+          bannedWords
+        })
+      });
+
+      if (res.ok) {
+        alert("✅ Pengaturan moderasi proyek berhasil disimpan!");
+        setShowSettingsModal(false);
+      } else {
+        const d = await res.json();
+        alert(d.error || "Gagal menyimpan pengaturan");
+      }
+    } catch (err: any) {
+      alert("Terjadi kesalahan: " + err.message);
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  // Manual Ban dari Tab Modal
+  const handleManualBan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedProject || !newBanName.trim()) return;
+    const token = localStorage.getItem("livechat_token");
+    if (!token) return;
+
+    try {
+      const res = await fetch(`http://localhost:4000/api/projects/${selectedProject.id}/banned`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ name: newBanName.trim() })
+      });
+
+      if (res.ok) {
+        setNewBanName("");
+        loadBannedUsers(selectedProject.id);
+      }
+    } catch (err) {
+      console.error("Gagal memblokir:", err);
+    }
+  };
+
+  // Unban dari Tab Modal
+  const handleUnban = async (bannedId: string) => {
+    if (!selectedProject) return;
+    const token = localStorage.getItem("livechat_token");
+    if (!token) return;
+
+    try {
+      const res = await fetch(`http://localhost:4000/api/projects/${selectedProject.id}/banned/${bannedId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (res.ok) {
+        setBannedUsers((prev) => prev.filter((b) => b.id !== bannedId));
+      }
+    } catch (err) {
+      console.error("Gagal mencabut ban:", err);
+    }
+  };
+
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
     const token = localStorage.getItem("livechat_token");
-    if (!token || !newProjectName) return;
+    if (!token || !newProjectName.trim()) return;
 
     try {
       const res = await fetch("http://localhost:4000/api/projects", {
@@ -276,24 +531,24 @@ export default function DashboardPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ name: newProjectName })
+        body: JSON.stringify({ name: newProjectName.trim(), domain: "*" })
       });
       const data = await res.json();
       if (data.project) {
         setProjects([data.project, ...projects]);
-        setSelectedProject(data.project);
+        handleSelectProject(data.project);
         setNewProjectName("");
         setShowModal(false);
       }
     } catch (err) {
-      console.error(err);
+      console.error("Gagal membuat proyek:", err);
     }
   };
 
   const handleCopyEmbed = () => {
     if (!selectedProject) return;
-    const embedSnippet = `<script src="http://localhost:4000/widget.js" data-token="${selectedProject.widgetToken}" defer></script>`;
-    navigator.clipboard.writeText(embedSnippet);
+    const script = `<script src="http://localhost:4000/widget.js" data-token="${selectedProject.widgetToken}"></script>`;
+    navigator.clipboard.writeText(script);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -304,161 +559,125 @@ export default function DashboardPage() {
     router.push("/login");
   };
 
-  return (
-    <div className="flex h-screen bg-slate-100 overflow-hidden font-sans">
-      {/* SIDEBAR: Projects & User Info */}
-      <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col justify-between border-r border-slate-800">
-        <div>
-          {/* Brand */}
-          <div className="p-5 flex items-center gap-3 border-b border-slate-800">
-            <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-md">
-              <MessageSquare className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="font-bold text-white text-base leading-tight">
-                LiveChat
-              </h2>
-              <span className="text-xs text-indigo-400">Admin Workspace</span>
-            </div>
-          </div>
-
-          {/* Project List */}
-          <div className="p-4">
-            <div className="flex items-center justify-between mb-3 text-xs uppercase tracking-wider text-slate-400 font-semibold">
-              <span>Proyek Website</span>
-              <button
-                onClick={() => setShowModal(true)}
-                className="hover:text-white p-1 rounded hover:bg-slate-800 transition"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="space-y-1">
-              {projects.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => setSelectedProject(p)}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition flex items-center justify-between ${
-                    selectedProject?.id === p.id
-                      ? "bg-indigo-600 text-white font-medium"
-                      : "hover:bg-slate-800 text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  <span className="truncate">{p.name}</span>
-                </button>
-              ))}
-            </div>
-          </div>
+  if (isAuthChecking) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-950 text-slate-400">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+          <span className="text-sm font-medium">Memverifikasi Sesi...</span>
         </div>
+      </div>
+    );
+  }
 
-        {/* User Info & Logout */}
-        <div className="p-4 border-t border-slate-800 bg-slate-950/40 flex items-center justify-between">
-          <div className="flex items-center gap-2 overflow-hidden">
-            <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-300 text-xs">
-              <User className="w-4 h-4" />
+  return (
+    <div className="flex h-screen bg-slate-100">
+      {/* SIDEBAR: DAFTAR PROYEK (COMMUNITY ROOMS) */}
+      <div className="w-80 bg-white border-r border-slate-200 flex flex-col h-full shadow-sm shrink-0">
+        {/* Profile Admin Header */}
+        <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
+          <div className="flex items-center gap-2.5 truncate">
+            <div className="w-9 h-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-sm shrink-0">
+              {user?.name ? user.name[0].toUpperCase() : "A"}
             </div>
             <div className="truncate">
-              <p className="text-sm font-medium text-white truncate">
+              <h2 className="font-semibold text-slate-800 text-sm truncate flex items-center gap-1">
                 {user?.name || "Admin"}
-              </p>
-              <p className="text-xs text-slate-500 truncate">{user?.email}</p>
+                <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-medium">
+                  Super Admin
+                </span>
+              </h2>
+              <p className="text-xs text-slate-400 truncate">{user?.email}</p>
             </div>
           </div>
           <button
             onClick={handleLogout}
             title="Keluar"
-            className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition"
+            className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-slate-100 transition shrink-0"
           >
             <LogOut className="w-4 h-4" />
           </button>
         </div>
-      </aside>
 
-      {/* MIDDLE: Chat Session Inbox */}
-      <section className="w-80 bg-white border-r border-slate-200 flex flex-col">
-        {/* Inbox Header */}
-        <div className="p-4 border-b border-slate-200">
-          <h3 className="font-semibold text-slate-800 text-base">
-            Kotak Masuk Chat
-          </h3>
-          <p className="text-xs text-slate-500 mt-0.5 truncate">
-            {selectedProject ? selectedProject.name : "Pilih proyek"}
-          </p>
+        {/* Header List Proyek */}
+        <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+          <div>
+            <h3 className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
+              <Users className="w-4 h-4 text-indigo-600" /> Ruang Komunitas
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">Pilih proyek obrolan grup</p>
+          </div>
+          <button
+            onClick={() => setShowModal(true)}
+            title="Tambah Proyek Baru"
+            className="p-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg transition font-medium text-xs flex items-center gap-1 border border-indigo-200"
+          >
+            <Plus className="w-3.5 h-3.5" /> Baru
+          </button>
         </div>
 
-        {/* Sessions List */}
+        {/* List Proyek */}
         <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
-          {sessions.length === 0 ? (
+          {projects.length === 0 ? (
             <div className="p-8 text-center text-slate-400 flex flex-col items-center justify-center h-full">
-              <Inbox className="w-10 h-10 mb-2 stroke-1" />
-              <p className="text-sm">Belum ada obrolan masuk</p>
+              <MessageSquare className="w-10 h-10 mb-2 stroke-1 text-slate-300" />
+              <p className="text-sm font-medium">Belum ada proyek</p>
               <p className="text-xs text-slate-400 mt-1">
-                Pasang widget atau buka Room Publik untuk mulai menerima chat.
+                Buat proyek pertama Anda untuk mulai mengobrol bersama komunitas.
               </p>
-              {selectedProject && (
-                <a
-                  href={`/room/${selectedProject.widgetToken}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-3 inline-flex items-center gap-1.5 text-xs bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-medium px-3 py-1.5 rounded-lg border border-indigo-200 transition"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" /> Uji Coba Chat Sekarang
-                </a>
-              )}
+              <button
+                onClick={() => setShowModal(true)}
+                className="mt-3 text-xs bg-indigo-600 text-white hover:bg-indigo-700 font-medium px-3 py-1.5 rounded-lg shadow-sm transition"
+              >
+                + Buat Proyek
+              </button>
             </div>
           ) : (
-            sessions.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => handleSelectSession(s)}
-                className={`w-full text-left p-4 transition flex flex-col gap-1 ${
-                  selectedSession?.id === s.id
-                    ? "bg-indigo-50/70 border-l-4 border-indigo-600"
-                    : "hover:bg-slate-50"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 truncate max-w-[190px]">
-                    <span className="font-medium text-slate-800 text-sm truncate">
-                      {s.visitorName || "Pengunjung"}
+            projects.map((p) => {
+              const isSelected = selectedProject?.id === p.id;
+              const lastMsg = p.messages && p.messages.length > 0 ? p.messages[0] : null;
+
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => handleSelectProject(p)}
+                  className={`w-full text-left p-4 transition flex flex-col gap-1.5 ${
+                    isSelected
+                      ? "bg-indigo-50/80 border-l-4 border-indigo-600"
+                      : "hover:bg-slate-50"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-slate-800 text-sm truncate">
+                      {p.name}
                     </span>
-                    {s.memberId ? (
-                      <span className="text-[10px] bg-emerald-100 text-emerald-700 font-semibold px-1.5 py-0.5 rounded flex items-center gap-0.5 shrink-0">
-                        <Shield className="w-2.5 h-2.5 text-emerald-600" /> Member
-                      </span>
-                    ) : (
-                      <span className="text-[10px] bg-slate-100 text-slate-600 font-medium px-1.5 py-0.5 rounded shrink-0">
-                        Tamu
-                      </span>
-                    )}
+                    <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium shrink-0">
+                      {p._count?.messages ?? 0} pesan
+                    </span>
                   </div>
-                  <span className="text-[10px] text-emerald-600 font-semibold px-1.5 py-0.5 bg-emerald-50 rounded-full flex items-center gap-1 shrink-0">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                    {s.status}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 truncate">
-                  {(() => {
-                    const lastMsg = s.messages && s.messages.length > 0 ? s.messages[s.messages.length - 1] : null;
-                    if (!lastMsg) return "Obrolan baru dibuka";
-                    if (lastMsg.content && lastMsg.content.trim()) return lastMsg.content;
-                    if (lastMsg.attachmentUrl) {
-                      if (lastMsg.senderType === "AGENT") return "📷 Anda mengirim gambar";
-                      const senderName = s.visitorName || (s.memberId ? "Member" : "Tamu");
-                      return `📷 ${senderName} mengirim gambar`;
-                    }
-                    return "Obrolan baru dibuka";
-                  })()}
-                </p>
-              </button>
-            ))
+
+                  {/* Cuplikan Pesan Terakhir */}
+                  <p className="text-xs text-slate-500 truncate">
+                    {(() => {
+                      if (!lastMsg) return "Ruang obrolan siap dipakai...";
+                      if (lastMsg.content && lastMsg.content.trim()) {
+                        return `${lastMsg.senderName}: ${lastMsg.content}`;
+                      }
+                      if (lastMsg.attachmentUrl) {
+                        return `📷 ${lastMsg.senderName} mengirim gambar`;
+                      }
+                      return "Ruang obrolan siap dipakai...";
+                    })()}
+                  </p>
+                </button>
+              );
+            })
           )}
         </div>
 
-        {/* Embed Script Helper Box */}
+        {/* Embed Script & Akses Cepat */}
         {selectedProject && (
-          <div className="p-3 bg-slate-50 border-t border-slate-200">
+          <div className="p-3.5 bg-slate-50 border-t border-slate-200">
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-xs font-semibold text-slate-700 flex items-center gap-1">
                 <Code className="w-3.5 h-3.5 text-indigo-600" /> Kode Pasang (Embed)
@@ -467,98 +686,183 @@ export default function DashboardPage() {
                 onClick={handleCopyEmbed}
                 className="text-xs text-indigo-600 hover:text-indigo-700 flex items-center gap-1 font-medium"
               >
-                {copied ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-emerald-600" /> Tersalin!
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5" /> Salin Tag
-                  </>
-                )}
+                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {copied ? "Tersalin" : "Salin"}
               </button>
             </div>
-            <code className="block bg-slate-200 text-slate-700 p-2 rounded text-[10px] font-mono break-all leading-tight">
-              &lt;script src=&quot;http://localhost:4000/widget.js&quot;
-              data-token=&quot;{selectedProject.widgetToken}&quot;
-              defer&gt;&lt;/script&gt;
-            </code>
-            <div className="mt-2.5 flex flex-col gap-1.5">
-              <a
-                href={`/simulator-widget/${selectedProject.widgetToken}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full bg-slate-800 hover:bg-slate-900 text-white font-medium py-2 px-2.5 rounded-lg text-xs flex items-center justify-center gap-1.5 transition shadow-sm"
-              >
-                <Laptop className="w-3.5 h-3.5 text-amber-400" /> 📱 Test Widget (Kanan Bawah)
-              </a>
+            <div className="bg-white p-2 rounded-lg border border-slate-200 text-[11px] font-mono text-slate-600 break-all select-all leading-relaxed">
+              {`<script src="http://localhost:4000/widget.js" data-token="${selectedProject.widgetToken}"></script>`}
+            </div>
+
+            <div className="mt-2.5 pt-2 border-t border-slate-200/80 flex items-center gap-2">
               <a
                 href={`/room/${selectedProject.widgetToken}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-2.5 rounded-lg text-xs flex items-center justify-center gap-1.5 transition shadow-sm"
+                className="flex-1 inline-flex items-center justify-center gap-1 text-[11px] bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 hover:text-indigo-600 py-1.5 rounded-lg transition font-medium"
               >
-                <ExternalLink className="w-3.5 h-3.5" /> Buka Room Publik (Chatango Style)
+                <ExternalLink className="w-3 h-3" /> Room Publik
+              </a>
+              <a
+                href={`/simulator-widget/${selectedProject.widgetToken}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 inline-flex items-center justify-center gap-1 text-[11px] bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 hover:text-indigo-600 py-1.5 rounded-lg transition font-medium"
+              >
+                <Laptop className="w-3 h-3" /> Simulator
               </a>
             </div>
           </div>
         )}
-      </section>
+      </div>
 
-      {/* RIGHT: Active Chat Conversation */}
-      <main className="flex-1 bg-slate-50 flex flex-col">
-        {selectedSession ? (
+      {/* PANEL UTAMA: CHAT RUANG KOMUNITAS DENGAN MODERASI */}
+      <div className="flex-1 flex flex-col h-full bg-slate-50">
+        {selectedProject ? (
           <>
-            {/* Chat Header */}
-            <div className="p-4 bg-white border-b border-slate-200 flex items-center justify-between">
+            {/* Top Bar Ruang Proyek */}
+            <div className="h-16 px-6 bg-white border-b border-slate-200 flex items-center justify-between shrink-0 shadow-sm">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
-                  {selectedSession.visitorName?.charAt(0).toUpperCase() || "V"}
-                </div>
+                <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-semibold text-slate-800 text-sm">
-                      {selectedSession.visitorName || "Pengunjung Website"}
-                    </h4>
-                    {selectedSession.memberId ? (
-                      <span className="text-[11px] bg-emerald-100 text-emerald-700 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
-                        <Shield className="w-3 h-3 text-emerald-600" /> Member Terdaftar
-                      </span>
-                    ) : (
-                      <span className="text-[11px] bg-slate-200 text-slate-600 font-medium px-2 py-0.5 rounded-full">
-                        Tamu Anonim
+                  <h3 className="font-bold text-slate-800 text-base leading-tight flex items-center gap-2">
+                    {selectedProject.name}
+                    <span className="text-xs font-normal text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md">
+                      Grup Publik
+                    </span>
+                    {slowModeSeconds > 0 && (
+                      <span className="text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-md flex items-center gap-1">
+                        <Clock className="w-3 h-3" /> Slow: {slowModeSeconds}s
                       </span>
                     )}
-                  </div>
-                  <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
-                    <Radio className="w-3 h-3 text-emerald-500 animate-pulse" />
-                    Koneksi Realtime Aktif
+                    {filterEnabled && (
+                      <span className="text-[11px] font-medium bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded-md flex items-center gap-1">
+                        <Shield className="w-3 h-3" /> Filter: {filterMode}
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-mono">
+                    Token: {selectedProject.widgetToken}
                   </p>
                 </div>
               </div>
+
+              <div className="flex items-center gap-2">
+                {/* Tombol Pengaturan Moderasi */}
+                <button
+                  onClick={() => {
+                    loadBannedUsers(selectedProject.id);
+                    setShowSettingsModal(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 text-xs bg-white text-slate-700 hover:text-indigo-600 hover:border-indigo-300 font-medium px-3 py-1.5 rounded-lg border border-slate-200 transition shadow-sm"
+                >
+                  <Settings className="w-3.5 h-3.5 text-indigo-600" /> Moderasi &amp; Pengaturan
+                </button>
+
+                <a
+                  href={`/room/${selectedProject.widgetToken}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-medium px-3 py-1.5 rounded-lg border border-indigo-200 transition"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" /> Room Publik
+                </a>
+              </div>
             </div>
 
-            {/* Chat Messages */}
-            <div className="flex-1 p-4 overflow-y-auto space-y-3">
+            {/* Error / System Toast */}
+            {errorToast && (
+              <div className="mx-6 mt-3 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs flex items-center justify-between shadow-sm animate-fade-in">
+                <span className="flex items-center gap-1.5 font-medium">
+                  <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" /> {errorToast}
+                </span>
+                <button onClick={() => setErrorToast(null)} className="text-red-400 hover:text-red-700 text-sm">
+                  ✕
+                </button>
+              </div>
+            )}
+
+            {/* Chat Area: Aliran Pesan Grup */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
               {messages.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-slate-400 text-sm">
-                  Belum ada pesan di percakapan ini.
+                <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                  <MessageSquare className="w-12 h-12 mb-3 stroke-1 text-slate-300" />
+                  <p className="text-base font-semibold text-slate-600">
+                    Ruang obrolan masih sepi
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1 max-w-sm text-center">
+                    Sebagai Admin, Anda bisa langsung mengetik pesan di bawah, atau gunakan perintah sakti seperti <code>/ban &lt;nama&gt;</code> atau <code>/slow &lt;detik&gt;</code>!
+                  </p>
                 </div>
               ) : (
                 messages.map((m) => {
+                  // Jika ini pesan notifikasi sistem
+                  if (m.isSystem) {
+                    return (
+                      <div key={m.id} className="flex justify-center my-2">
+                        <div className="bg-slate-200/80 text-slate-700 px-4 py-1.5 rounded-full text-xs font-medium border border-slate-300 shadow-sm flex items-center gap-1.5">
+                          {m.content}
+                        </div>
+                      </div>
+                    );
+                  }
+
                   const isAgent = m.senderType === "AGENT";
+                  const isMember = m.senderType === "MEMBER";
+
                   return (
                     <div
                       key={m.id}
-                      className={`flex ${
-                        isAgent ? "justify-end" : "justify-start"
+                      className={`flex flex-col ${
+                        isAgent ? "items-end" : "items-start"
                       }`}
                     >
+                      {/* Label Pengirim, Badge & Tombol Moderasi */}
+                      <div className="flex items-center gap-1.5 mb-1 px-1">
+                        <span className="text-xs font-semibold text-slate-700">
+                          {m.senderName || (isAgent ? "Admin" : "Tamu")}
+                        </span>
+                        {isAgent ? (
+                          <span className="text-[10px] bg-indigo-100 text-indigo-700 font-semibold px-1.5 py-0.2 rounded flex items-center gap-0.5">
+                            <Crown className="w-2.5 h-2.5" /> Admin
+                          </span>
+                        ) : isMember ? (
+                          <span className="text-[10px] bg-emerald-100 text-emerald-700 font-semibold px-1.5 py-0.2 rounded flex items-center gap-0.5">
+                            <Shield className="w-2.5 h-2.5" /> Member
+                          </span>
+                        ) : (
+                          <span className="text-[10px] bg-slate-100 text-slate-500 font-medium px-1.5 py-0.2 rounded">
+                            Tamu
+                          </span>
+                        )}
+
+                        {/* Tombol 1-Click Ban untuk Admin */}
+                        {!isAgent && (
+                          <button
+                            onClick={() => handleQuickBan(m.senderName)}
+                            title={`Blokir "${m.senderName}"`}
+                            className="text-[10px] text-slate-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition flex items-center gap-0.5 ml-1"
+                          >
+                            <Ban className="w-3 h-3 text-red-500" /> Ban
+                          </button>
+                        )}
+
+                        {/* Tombol Hapus Pesan untuk Admin */}
+                        <button
+                          onClick={() => handleDeleteMessage(m.id)}
+                          title="Hapus pesan ini"
+                          className="text-[10px] text-slate-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition flex items-center gap-0.5 ml-0.5"
+                        >
+                          <Trash2 className="w-3 h-3 text-slate-400 hover:text-red-500" /> Hapus
+                        </button>
+                      </div>
+
+                      {/* Bubble Chat */}
                       <div
-                        className={`max-w-md px-4 py-2.5 rounded-2xl text-sm shadow-sm ${
+                        className={`max-w-lg px-4 py-2.5 rounded-2xl text-sm shadow-sm ${
                           isAgent
-                            ? "bg-indigo-600 text-white rounded-br-none"
-                            : "bg-white text-slate-800 border border-slate-200 rounded-bl-none"
+                            ? "bg-indigo-600 text-white rounded-tr-none"
+                            : "bg-white text-slate-800 border border-slate-200 rounded-tl-none"
                         }`}
                       >
                         {m.attachmentUrl && (
@@ -572,9 +876,9 @@ export default function DashboardPage() {
                             />
                           </div>
                         )}
-                        {m.content && <p>{m.content}</p>}
+                        {m.content && <p className="whitespace-pre-wrap">{m.content}</p>}
                         <span
-                          className={`block text-[10px] mt-1 text-right ${
+                          className={`block text-[10px] mt-1.5 text-right ${
                             isAgent ? "text-indigo-200" : "text-slate-400"
                           }`}
                         >
@@ -591,7 +895,7 @@ export default function DashboardPage() {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Input Bar */}
+            {/* Input Bar Admin */}
             <div className="p-4 bg-white border-t border-slate-200">
               <input
                 type="file"
@@ -614,50 +918,302 @@ export default function DashboardPage() {
                   type="text"
                   value={inputMessage}
                   onChange={(e) => setInputMessage(e.target.value)}
-                  placeholder={uploading ? "Sedang mengunggah gambar (maks 5MB)..." : "Ketik balasan untuk pengunjung..."}
+                  placeholder={
+                    uploading
+                      ? "Sedang mengunggah gambar (maks 5MB)..."
+                      : `Ketik pesan atau command (/ban <nama>, /unban <nama>, /slow <detik>)...`
+                  }
                   disabled={uploading}
                   className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm text-slate-800 disabled:bg-slate-50"
                 />
                 <button
                   type="submit"
                   disabled={(!inputMessage.trim() && !uploading) || uploading}
-                  className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-medium text-sm transition shrink-0"
+                  className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-medium text-sm transition shrink-0 shadow-sm"
                 >
                   <Send className="w-4 h-4" /> Kirim
                 </button>
               </form>
+              <div className="flex items-center gap-4 mt-2 text-[11px] text-slate-400 px-1">
+                <span>💡 Tips Perintah Admin:</span>
+                <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">/ban &lt;nama&gt;</span>
+                <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">/unban &lt;nama&gt;</span>
+                <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">/slow &lt;detik&gt;</span>
+              </div>
             </div>
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-8 text-center">
             <MessageSquare className="w-12 h-12 mb-3 stroke-1 text-slate-300" />
             <h4 className="text-base font-semibold text-slate-600">
-              Pilih Percakapan
+              Pilih Ruang Komunitas
             </h4>
             <p className="text-sm text-slate-400 max-w-sm mt-1">
-              Pilih salah satu obrolan dari kotak masuk sebelah kiri untuk mulai
-              berkomunikasi dengan pengunjung.
+              Pilih salah satu proyek di sebelah kiri untuk mulai mengobrol bersama seluruh audiens.
             </p>
           </div>
         )}
-      </main>
+      </div>
 
-      {/* Modal Buat Project Baru */}
+      {/* MODAL PENGATURAN MODERASI & BAN (GEAR ICON) */}
+      {showSettingsModal && selectedProject && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <div>
+                <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                  <Settings className="w-5 h-5 text-indigo-600" /> Pengaturan Komunitas &amp; Moderasi
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Proyek: <strong>{selectedProject.name}</strong>
+                </p>
+              </div>
+              <button
+                onClick={() => setShowSettingsModal(false)}
+                className="text-slate-400 hover:text-slate-700 text-lg p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Tab Selector */}
+            <div className="flex border-b border-slate-200 px-6 pt-2 bg-slate-50">
+              <button
+                type="button"
+                onClick={() => setSettingsTab("moderation")}
+                className={`py-2.5 px-4 font-semibold text-xs border-b-2 transition flex items-center gap-1.5 ${
+                  settingsTab === "moderation"
+                    ? "border-indigo-600 text-indigo-600"
+                    : "border-transparent text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <Shield className="w-4 h-4" /> Filter &amp; Slow Mode
+              </button>
+              <button
+                type="button"
+                onClick={() => setSettingsTab("banned")}
+                className={`py-2.5 px-4 font-semibold text-xs border-b-2 transition flex items-center gap-1.5 ${
+                  settingsTab === "banned"
+                    ? "border-indigo-600 text-indigo-600"
+                    : "border-transparent text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <Ban className="w-4 h-4" /> Pengguna Diblokir ({bannedUsers.length})
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto flex-1">
+              {settingsTab === "moderation" ? (
+                <form onSubmit={handleSaveSettings} className="space-y-5">
+                  {/* 1. SLOW MODE */}
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-indigo-600" /> Mode Lambat (Slow Mode)
+                    </label>
+                    <p className="text-xs text-slate-500 mb-2.5">
+                      Batasi jeda waktu pengiriman pesan antar-pengunjung (Tamu &amp; Member). Isi 0 untuk menonaktifkan.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        max="3600"
+                        value={slowModeSeconds}
+                        onChange={(e) => setSlowModeSeconds(Number(e.target.value))}
+                        className="w-24 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      />
+                      <span className="text-xs text-slate-600 font-medium">detik per pesan</span>
+                    </div>
+                  </div>
+
+                  {/* 2. FILTER KATA KASAR */}
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                          <AlertTriangle className="w-4 h-4 text-amber-500" /> Filter Sensor Kata Kasar
+                        </label>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Aktifkan pencegahan kata kasar atau spam secara otomatis.
+                        </p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={filterEnabled}
+                        onChange={(e) => setFilterEnabled(e.target.checked)}
+                        className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 cursor-pointer"
+                      />
+                    </div>
+
+                    {filterEnabled && (
+                      <>
+                        {/* OPSI TINDAKAN SENSOR / TOLAK */}
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                            Tindakan Jika Kata Terdeteksi:
+                          </label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <label
+                              className={`flex items-center gap-2 p-2.5 rounded-lg border text-xs font-medium cursor-pointer transition ${
+                                filterMode === "CENSOR"
+                                  ? "bg-indigo-50 border-indigo-400 text-indigo-800"
+                                  : "bg-white border-slate-200 text-slate-600"
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                name="filterMode"
+                                value="CENSOR"
+                                checked={filterMode === "CENSOR"}
+                                onChange={() => setFilterMode("CENSOR")}
+                              />
+                              Sensor (Ganti ***)
+                            </label>
+                            <label
+                              className={`flex items-center gap-2 p-2.5 rounded-lg border text-xs font-medium cursor-pointer transition ${
+                                filterMode === "REJECT"
+                                  ? "bg-rose-50 border-rose-400 text-rose-800"
+                                  : "bg-white border-slate-200 text-slate-600"
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                name="filterMode"
+                                value="REJECT"
+                                checked={filterMode === "REJECT"}
+                                onChange={() => setFilterMode("REJECT")}
+                              />
+                              Tolak Pesan Mentah
+                            </label>
+                          </div>
+                        </div>
+
+                        {/* TEXTAREA DAFTAR KATA */}
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">
+                            Daftar Kata Terlarang (Pisahkan dengan koma):
+                          </label>
+                          <textarea
+                            rows={3}
+                            value={bannedWords}
+                            onChange={(e) => setBannedWords(e.target.value)}
+                            placeholder="cth: anjing, babi, penipu, spam, bodoh"
+                            className="w-full px-3 py-2 border rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {/* DANGER ZONE: HAPUS PROYEK (SELALU MUNCUL SECARA INDEPENDEN) */}
+                    <div className="p-3 bg-red-50/80 border border-red-200 rounded-xl mt-4">
+                      <h5 className="text-xs font-bold text-red-700 flex items-center gap-1">
+                        <AlertTriangle className="w-3.5 h-3.5 text-red-600" /> Danger Zone (Zona Bahaya)
+                      </h5>
+                      <p className="text-[11px] text-red-600/80 mt-1 leading-relaxed">
+                        Menghapus ruang komunitas ini akan melenyapkan seluruh riwayat pesan, anggota yang diblokir, dan pengaturannya secara permanen. Tindakan ini tidak dapat dibatalkan.
+                      </p>
+                      <div className="mt-2.5 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={handleDeleteProject}
+                          className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" /> Hapus Ruang Komunitas
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowSettingsModal(false)}
+                      className="px-4 py-2 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={savingSettings}
+                      className="px-4 py-2 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium shadow-sm transition disabled:opacity-50"
+                    >
+                      {savingSettings ? "Menyimpan..." : "Simpan Pengaturan"}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                /* TAB PENGGUNA DIBLOKIR */
+                <div className="space-y-4">
+                  {/* Form Tambah Ban Manual */}
+                  <form onSubmit={handleManualBan} className="flex gap-2">
+                    <input
+                      type="text"
+                      required
+                      placeholder="Masukkan nama pengguna yang ingin di-ban..."
+                      value={newBanName}
+                      onChange={(e) => setNewBanName(e.target.value)}
+                      className="flex-1 px-3 py-2 border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm transition"
+                    >
+                      <Ban className="w-3.5 h-3.5" /> Blokir
+                    </button>
+                  </form>
+
+                  {/* List Banned Users */}
+                  <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
+                    {bannedUsers.length === 0 ? (
+                      <div className="p-8 text-center text-slate-400 text-xs">
+                        Tidak ada pengguna yang sedang diblokir di proyek ini.
+                      </div>
+                    ) : (
+                      bannedUsers.map((bu) => (
+                        <div key={bu.id} className="p-3.5 flex items-center justify-between hover:bg-slate-50">
+                          <div>
+                            <div className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                              <Ban className="w-3.5 h-3.5 text-red-500" /> {bu.username || bu.guestName}
+                            </div>
+                            <div className="text-[10px] text-slate-400 mt-0.5">
+                              Oleh {bu.bannedBy} • {new Date(bu.bannedAt).toLocaleDateString()}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleUnban(bu.id)}
+                            className="px-2.5 py-1 text-[11px] bg-white border border-slate-200 text-emerald-600 hover:bg-emerald-50 hover:border-emerald-200 font-semibold rounded-lg transition"
+                          >
+                            Cabut Ban
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Tambah Proyek Baru */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
-            <h3 className="text-lg font-bold text-slate-800 mb-3">
-              Tambah Proyek Baru
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
+            <h3 className="text-base font-bold text-slate-800 mb-4">
+              Tambah Ruang Komunitas (Proyek Baru)
             </h3>
             <form onSubmit={handleCreateProject} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Nama Website / Proyek
+                  Nama Ruang / Website
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="cth: Toko Online Saya"
+                  placeholder="cth: Komunitas Anime, Toko Sepatu, dll"
                   value={newProjectName}
                   onChange={(e) => setNewProjectName(e.target.value)}
                   className="w-full px-3 py-2 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -675,7 +1231,7 @@ export default function DashboardPage() {
                   type="submit"
                   className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"
                 >
-                  Simpan
+                  Buat Ruang
                 </button>
               </div>
             </form>

@@ -13,70 +13,86 @@ enum Role {
   MEMBER
 }
 
-enum SessionStatus {
-  OPEN
-  CLOSED
-}
-
 enum SenderType {
   VISITOR
   AGENT
   MEMBER
 }
 
-model User {
-  id               String        @id @default(cuid())
-  email            String?       @unique
-  username         String?       @unique
-  password         String
-  name             String
-  role             Role          @default(AGENT)
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+enum FilterMode {
+  CENSOR
+  REJECT
+}
 
-  projects         Project[]
-  assignedSessions ChatSession[] @relation("AgentSessions")
-  memberSessions   ChatSession[] @relation("MemberSessions")
+model User {
+  id        String    @id @default(cuid())
+  email     String?   @unique
+  username  String?   @unique
+  password  String
+  name      String
+  role      Role      @default(AGENT)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  projects  Project[]
 }
 
 model Project {
-  id          String        @id @default(cuid())
+  id          String           @id @default(cuid())
   name        String
-  domain      String
-  widgetToken String        @unique @default(uuid())
+  domain      String           @default("*")
+  widgetToken String           @unique @default(uuid())
   ownerId     String
-  owner       User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  owner       User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 
-  sessions    ChatSession[]
-}
-
-model ChatSession {
-  id              String        @id @default(cuid())
-  projectId       String
-  project         Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  visitorId       String
-  visitorName     String?
-  memberId        String?
-  member          User?         @relation("MemberSessions", fields: [memberId], references: [id], onDelete: SetNull)
-  status          SessionStatus @default(OPEN)
-  assignedAgentId String?
-  assignedAgent   User?         @relation("AgentSessions", fields: [assignedAgentId], references: [id], onDelete: SetNull)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-
-  messages        Message[]
+  messages    Message[]
+  settings    ProjectSettings?
+  bannedUsers BannedUser[]
 }
 
 model Message {
-  id            String      @id @default(cuid())
-  sessionId     String
-  session       ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  id            String     @id @default(cuid())
+  projectId     String
+  project       Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   senderType    SenderType
-  senderId      String
-  content       String      @db.Text
-  attachmentUrl String?     @db.Text
-  createdAt     DateTime    @default(now())
+  senderId      String?
+  senderName    String
+  content       String?    @db.Text
+  attachmentUrl String?    @db.Text
+  createdAt     DateTime   @default(now())
 }
 
+model ProjectSettings {
+  id              String     @id @default(cuid())
+  projectId       String     @unique
+  project         Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  // Slow Mode (0 = Nonaktif)
+  slowModeSeconds Int        @default(0)
+
+  // Filter Kata Kasar
+  filterEnabled   Boolean    @default(false)
+  filterMode      FilterMode @default(CENSOR)
+  bannedWords     String?    @db.Text
+
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+}
+
+model BannedUser {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  username  String?  // Untuk Member
+  guestName String?  // Untuk Tamu
+
+  bannedBy  String   // Nama Admin
+  reason    String?  // Alasan ban
+  bannedAt  DateTime @default(now())
+
+  @@index([projectId, username])
+  @@index([projectId, guestName])
+}

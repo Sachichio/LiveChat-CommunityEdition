@@ -71,30 +71,6 @@ function LiveChatWidget() {
     return () => clearInterval(timer);
   }, [slowModeCooldown]);
 
-  // Cek admin, member, atau nama tamu tersimpan saat inisialisasi
-  useEffect(() => {
-    const savedAdmin = localStorage.getItem("livechat_admin_user");
-    if (savedAdmin) {
-      try {
-        const admin = JSON.parse(savedAdmin);
-        setCurrentAdmin(admin);
-      } catch {}
-    }
-
-    const savedMember = localStorage.getItem("livechat_member_user");
-    if (savedMember) {
-      try {
-        const member = JSON.parse(savedMember);
-        setCurrentMember(member);
-      } catch {}
-    }
-
-    const savedGuest = localStorage.getItem("livechat_guest_name");
-    if (savedGuest) {
-      setGuestName(savedGuest);
-    }
-  }, []);
-
   // Verifikasi keabsahan proyek ke backend (Auto-destruct jika proyek dihapus)
   useEffect(() => {
     if (!WIDGET_TOKEN) {
@@ -220,35 +196,9 @@ function LiveChatWidget() {
     connectWebSocket();
   };
 
-  // Buka Widget
+  // Buka / Tutup Widget (Selalu mulai dari form pilihan identitas jika belum bergabung)
   const handleToggle = () => {
-    const nextState = !isOpen;
-    setIsOpen(nextState);
-
-    if (nextState && !isJoined) {
-      const savedAdmin = localStorage.getItem("livechat_admin_user");
-      if (savedAdmin) {
-        try {
-          const admin = JSON.parse(savedAdmin);
-          joinAsAdmin(admin);
-          return;
-        } catch {}
-      }
-
-      const savedMember = localStorage.getItem("livechat_member_user");
-      if (savedMember) {
-        try {
-          const member = JSON.parse(savedMember);
-          joinAsMember(member);
-          return;
-        } catch {}
-      }
-
-      const savedGuest = localStorage.getItem("livechat_guest_name");
-      if (savedGuest) {
-        joinAsGuest(savedGuest);
-      }
-    }
+    setIsOpen(!isOpen);
   };
 
   // Submit Tamu

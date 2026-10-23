@@ -60,7 +60,14 @@ export default function PublicChatRoomPage() {
   const [adminPassword, setAdminPassword] = useState("");
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
-  const [errorToast, setErrorToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "error" | "success" } | null>(null);
+
+  const showToast = (message: string, type: "error" | "success" = "error") => {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast((curr) => (curr?.message === message ? null : curr));
+    }, 4500);
+  };
 
   // Moderation Settings (Admin only)
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -115,38 +122,6 @@ export default function PublicChatRoomPage() {
 
         // Ambil riwayat obrolan grup
         fetchMessages(token);
-
-        // 1. Cek Admin session
-        const savedAdmin = localStorage.getItem("livechat_admin_user");
-        if (savedAdmin) {
-          try {
-            const adminObj = JSON.parse(savedAdmin);
-            setCurrentAdmin(adminObj);
-            setIsJoined(true);
-            connectWebSocket(token);
-            return;
-          } catch {}
-        }
-
-        // 2. Cek Member session
-        const savedMember = localStorage.getItem("livechat_member_user");
-        if (savedMember) {
-          try {
-            const memberObj = JSON.parse(savedMember);
-            setCurrentMember(memberObj);
-            setIsJoined(true);
-            connectWebSocket(token);
-            return;
-          } catch {}
-        }
-
-        // 3. Cek Tamu session
-        const savedGuest = localStorage.getItem("livechat_guest_name");
-        if (savedGuest) {
-          setGuestName(savedGuest);
-          setIsJoined(true);
-          connectWebSocket(token);
-        }
       } catch (err: any) {
         setError(err.message);
       } finally {
@@ -236,8 +211,7 @@ export default function PublicChatRoomPage() {
 
         // 4. Error Toast dari Server
         if (data.type === "error" && data.message) {
-          setErrorToast(data.message);
-          setTimeout(() => setErrorToast(null), 6000);
+          showToast(data.message, "error");
 
           // Jika ada sisa detik slow mode, pasang countdown
           const match = data.message.match(/(\d+)\s*detik/);
@@ -437,14 +411,14 @@ export default function PublicChatRoomPage() {
       });
 
       if (res.ok) {
-        alert("✅ Pengaturan moderasi berhasil disimpan!");
+        showToast("✅ Pengaturan moderasi berhasil disimpan!", "success");
         setShowSettingsModal(false);
       } else {
         const d = await res.json();
-        alert(d.error || "Gagal menyimpan");
+        showToast(d.error || "Gagal menyimpan", "error");
       }
     } catch (err: any) {
-      alert("Error: " + err.message);
+      showToast("Error: " + err.message, "error");
     } finally {
       setSavingSettings(false);
     }
@@ -476,7 +450,7 @@ export default function PublicChatRoomPage() {
     if (!inputMessage.trim() || !socketRef.current) return;
 
     if (!currentAdmin && slowModeCooldown > 0) {
-      setErrorToast(`🐢 Slow Mode aktif! Tunggu ${slowModeCooldown} detik lagi.`);
+      showToast(`🐢 Slow Mode aktif! Tunggu ${slowModeCooldown} detik lagi.`, "error");
       return;
     }
 
@@ -514,13 +488,13 @@ export default function PublicChatRoomPage() {
 
     const allowedMimes = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"];
     if (!file.type || !allowedMimes.includes(file.type.toLowerCase())) {
-      alert("Format file tidak didukung! Hanya gambar (PNG, JPG, JPEG, WEBP, GIF) yang diperbolehkan.");
+      showToast("Format file tidak didukung! Hanya gambar (PNG, JPG, JPEG, WEBP, GIF) yang diperbolehkan.", "error");
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
 
     if (file.size > 2 * 1024 * 1024) {
-      alert("Ukuran file terlalu besar! Maksimal ukuran gambar adalah 2 MB.");
+      showToast("Ukuran file terlalu besar! Maksimal ukuran gambar adalah 2 MB.", "error");
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
@@ -537,7 +511,7 @@ export default function PublicChatRoomPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        alert(data.error || "Gagal mengunggah gambar!");
+        showToast(data.error || "Gagal mengunggah gambar!", "error");
         return;
       }
 
@@ -564,7 +538,7 @@ export default function PublicChatRoomPage() {
       setInputMessage("");
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (err: any) {
-      alert("Terjadi kesalahan jaringan saat mengunggah gambar: " + err.message);
+      showToast("Terjadi kesalahan jaringan saat mengunggah gambar: " + err.message, "error");
     } finally {
       setUploading(false);
     }
@@ -578,8 +552,8 @@ export default function PublicChatRoomPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400">
-        <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4" />
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-500">
+        <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4" />
         <p className="text-sm font-medium">Menghubungkan ke ruang obrolan...</p>
       </div>
     );
@@ -587,11 +561,11 @@ export default function PublicChatRoomPage() {
 
   if (error || !project) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400 p-4 text-center">
-        <div className="w-16 h-16 bg-red-500/10 text-red-400 rounded-2xl flex items-center justify-center mb-4">
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-600 p-4 text-center">
+        <div className="w-16 h-16 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mb-4 shadow-sm">
           <MessageSquare className="w-8 h-8" />
         </div>
-        <h1 className="text-xl font-bold text-white mb-2">Room Tidak Ditemukan</h1>
+        <h1 className="text-xl font-bold text-slate-900 mb-2">Room Tidak Ditemukan</h1>
         <p className="text-sm text-slate-500 max-w-sm">
           {error || "Tautan yang Anda tuju mungkin salah atau telah dinonaktifkan oleh pemilik ruang."}
         </p>
@@ -600,28 +574,46 @@ export default function PublicChatRoomPage() {
   }
 
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-100 flex-col items-center justify-center overflow-hidden">
-      <div className="w-full max-w-4xl h-full sm:h-[94vh] flex flex-col bg-slate-900 sm:rounded-3xl border border-slate-800 shadow-2xl overflow-hidden relative">
+    <div className="flex h-screen bg-slate-100 text-slate-800 flex-col items-center justify-center overflow-hidden relative">
+      {/* FLOATING TOAST NOTIFICATION MODERN */}
+      {toast && (
+        <div className="fixed top-5 right-5 z-50 flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl border bg-white border-red-200 text-red-700">
+          <div className="w-8 h-8 rounded-xl bg-red-100 flex items-center justify-center shrink-0 text-red-600 font-bold">
+            ⚠️
+          </div>
+          <div className="text-xs sm:text-sm font-medium pr-2 max-w-sm">
+            {toast.message}
+          </div>
+          <button
+            onClick={() => setToast(null)}
+            className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition shrink-0"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      <div className="w-full max-w-4xl h-full sm:h-[94vh] flex flex-col bg-white sm:rounded-3xl border border-slate-200 shadow-xl overflow-hidden relative">
         
         {/* HEADER ROOM */}
-        <div className="px-6 py-4 bg-slate-900/80 backdrop-blur-md border-b border-slate-800 flex items-center justify-between z-10">
+        <div className="px-6 py-4 bg-white/90 backdrop-blur-md border-b border-slate-200 flex items-center justify-between z-10">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-md shadow-indigo-500/20">
               <Users className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h2 className="font-bold text-white text-base flex items-center gap-2">
+              <h2 className="font-bold text-slate-900 text-base flex items-center gap-2">
                 {project.name}
-                <span className="text-[11px] font-normal bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-full">
+                <span className="text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full">
                   Komunitas Publik
                 </span>
                 {slowModeSeconds > 0 && (
-                  <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
-                    <Clock className="w-3 h-3" /> {slowModeSeconds}s
+                  <span className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono font-medium">
+                    <Clock className="w-3 h-3 text-amber-600" /> {slowModeSeconds}s
                   </span>
                 )}
               </h2>
-              <p className="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5">
+              <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 Live Chatango Room
               </p>
@@ -630,24 +622,24 @@ export default function PublicChatRoomPage() {
 
           <div className="flex items-center gap-2">
             {isJoined && (
-              <div className="hidden sm:flex items-center gap-2 mr-2 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700/50">
+              <div className="hidden sm:flex items-center gap-2 mr-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
                 {currentAdmin ? (
-                  <span className="text-xs text-amber-400 font-bold flex items-center gap-1.5">
-                    <Crown className="w-3.5 h-3.5 text-amber-400" /> {currentAdmin.name || "Admin"}
+                  <span className="text-xs text-amber-700 font-bold flex items-center gap-1.5">
+                    <Crown className="w-3.5 h-3.5 text-amber-600" /> {currentAdmin.name || "Admin"}
                   </span>
                 ) : currentMember ? (
-                  <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1.5">
-                    <Shield className="w-3.5 h-3.5" /> @{currentMember.username}
+                  <span className="text-xs text-emerald-700 font-semibold flex items-center gap-1.5">
+                    <Shield className="w-3.5 h-3.5 text-emerald-600" /> @{currentMember.username}
                   </span>
                 ) : (
-                  <span className="text-xs text-slate-300 font-medium flex items-center gap-1.5">
+                  <span className="text-xs text-slate-700 font-medium flex items-center gap-1.5">
                     <User className="w-3.5 h-3.5 text-slate-400" /> {guestName} (Tamu)
                   </span>
                 )}
                 <button
                   onClick={handleLogout}
                   title="Ganti Nama / Keluar"
-                  className="text-slate-400 hover:text-red-400 transition ml-1"
+                  className="text-slate-400 hover:text-red-500 transition ml-1"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                 </button>
@@ -662,7 +654,7 @@ export default function PublicChatRoomPage() {
                   setShowSettingsModal(true);
                 }}
                 title="Moderasi & Pengaturan Proyek"
-                className="p-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 transition flex items-center gap-1.5 text-xs font-semibold"
+                className="p-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition flex items-center gap-1.5 text-xs font-semibold"
               >
                 <Settings className="w-4 h-4" />
                 <span className="hidden sm:inline">Moderasi</span>
@@ -672,40 +664,28 @@ export default function PublicChatRoomPage() {
             <button
               onClick={handleCopyLink}
               title="Bagikan Tautan Room"
-              className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition flex items-center gap-1.5 text-xs font-medium border border-slate-700"
+              className="p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 transition flex items-center gap-1.5 text-xs font-medium border border-slate-200 shadow-sm"
             >
-              {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Share2 className="w-4 h-4" />}
+              {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Share2 className="w-4 h-4" />}
               <span className="hidden sm:inline">{copied ? "Tersalin!" : "Bagikan"}</span>
             </button>
           </div>
         </div>
 
-        {/* ERROR / SYSTEM TOAST */}
-        {errorToast && (
-          <div className="mx-6 mt-3 p-3 bg-red-500/15 border border-red-500/40 text-red-300 rounded-xl text-xs flex items-center justify-between shadow-lg z-20">
-            <span className="flex items-center gap-2 font-medium">
-              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" /> {errorToast}
-            </span>
-            <button onClick={() => setErrorToast(null)} className="text-red-400 hover:text-white text-sm">
-              ✕
-            </button>
-          </div>
-        )}
-
         {/* AUTH TAB MODAL JIKA BELUM JOIN */}
         {!isJoined ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center z-10">
-            <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl">
+          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center z-10 bg-slate-50/50">
+            <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-xl">
               
               {/* Tab Selector (Tamu | Masuk | Daftar | Admin) */}
-              <div className="grid grid-cols-4 p-1 bg-slate-950 rounded-2xl mb-6 border border-slate-800 gap-1">
+              <div className="grid grid-cols-4 p-1 bg-slate-100 rounded-2xl mb-6 border border-slate-200 gap-1">
                 <button
                   type="button"
                   onClick={() => { setActiveTab("guest"); setAuthError(""); }}
                   className={`py-2 text-[11px] font-semibold rounded-xl transition flex items-center justify-center gap-1 ${
                     activeTab === "guest"
-                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
-                      : "text-slate-400 hover:text-slate-200"
+                      ? "bg-white text-indigo-600 shadow-sm"
+                      : "text-slate-500 hover:text-slate-800"
                   }`}
                 >
                   <User className="w-3 h-3" /> Tamu
@@ -715,8 +695,8 @@ export default function PublicChatRoomPage() {
                   onClick={() => { setActiveTab("login"); setAuthError(""); }}
                   className={`py-2 text-[11px] font-semibold rounded-xl transition flex items-center justify-center gap-1 ${
                     activeTab === "login"
-                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
-                      : "text-slate-400 hover:text-slate-200"
+                      ? "bg-white text-indigo-600 shadow-sm"
+                      : "text-slate-500 hover:text-slate-800"
                   }`}
                 >
                   <KeyRound className="w-3 h-3" /> Masuk
@@ -726,8 +706,8 @@ export default function PublicChatRoomPage() {
                   onClick={() => { setActiveTab("register"); setAuthError(""); }}
                   className={`py-2 text-[11px] font-semibold rounded-xl transition flex items-center justify-center gap-1 ${
                     activeTab === "register"
-                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
-                      : "text-slate-400 hover:text-slate-200"
+                      ? "bg-white text-indigo-600 shadow-sm"
+                      : "text-slate-500 hover:text-slate-800"
                   }`}
                 >
                   <UserPlus className="w-3 h-3" /> Daftar
@@ -737,8 +717,8 @@ export default function PublicChatRoomPage() {
                   onClick={() => { setActiveTab("admin"); setAuthError(""); }}
                   className={`py-2 text-[11px] font-semibold rounded-xl transition flex items-center justify-center gap-1 ${
                     activeTab === "admin"
-                      ? "bg-amber-600 text-white shadow-md shadow-amber-600/30"
-                      : "text-amber-400/70 hover:text-amber-300"
+                      ? "bg-amber-600 text-white shadow-sm"
+                      : "text-amber-700/80 hover:text-amber-800"
                   }`}
                 >
                   <Crown className="w-3 h-3" /> Admin
@@ -746,7 +726,7 @@ export default function PublicChatRoomPage() {
               </div>
 
               {authError && (
-                <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-400 text-left">
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 text-left">
                   ⚠️ {authError}
                 </div>
               )}
@@ -755,7 +735,7 @@ export default function PublicChatRoomPage() {
               {activeTab === "guest" && (
                 <form onSubmit={handleJoinGuest} className="space-y-4 text-left">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-400 mb-1.5">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                       Nama Panggilan Tamu
                     </label>
                     <input
@@ -764,12 +744,12 @@ export default function PublicChatRoomPage() {
                       value={guestName}
                       onChange={(e) => setGuestName(e.target.value)}
                       placeholder="cth: Budi, Traveler, Anonim"
-                      className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-sm"
                     />
                   </div>
                   <button
                     type="submit"
-                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium text-sm transition shadow-lg shadow-indigo-600/30"
+                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium text-sm transition shadow-md shadow-indigo-600/20"
                   >
                     Masuk ke Ruang Obrolan
                   </button>
@@ -780,7 +760,7 @@ export default function PublicChatRoomPage() {
               {activeTab === "login" && (
                 <form onSubmit={handleMemberLogin} className="space-y-3.5 text-left">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-400 mb-1">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
                       Username
                     </label>
                     <input
@@ -789,11 +769,11 @@ export default function PublicChatRoomPage() {
                       value={authUsername}
                       onChange={(e) => setAuthUsername(e.target.value)}
                       placeholder="Username Anda"
-                      className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-400 mb-1">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
                       Password
                     </label>
                     <input
@@ -802,13 +782,13 @@ export default function PublicChatRoomPage() {
                       value={authPassword}
                       onChange={(e) => setAuthPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-sm"
                     />
                   </div>
                   <button
                     type="submit"
                     disabled={authLoading}
-                    className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl font-medium text-sm transition shadow-lg shadow-emerald-600/30"
+                    className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl font-medium text-sm transition shadow-md shadow-emerald-600/20"
                   >
                     {authLoading ? "Memverifikasi..." : "Masuk Sebagai Member"}
                   </button>
@@ -819,7 +799,7 @@ export default function PublicChatRoomPage() {
               {activeTab === "register" && (
                 <form onSubmit={handleMemberRegister} className="space-y-3.5 text-left">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-400 mb-1">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
                       Pilih Username
                     </label>
                     <input
@@ -828,11 +808,11 @@ export default function PublicChatRoomPage() {
                       value={authUsername}
                       onChange={(e) => setAuthUsername(e.target.value)}
                       placeholder="cth: sacchio"
-                      className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-400 mb-1">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
                       Buat Password
                     </label>
                     <input
@@ -841,13 +821,13 @@ export default function PublicChatRoomPage() {
                       value={authPassword}
                       onChange={(e) => setAuthPassword(e.target.value)}
                       placeholder="Minimal 6 karakter"
-                      className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-sm"
                     />
                   </div>
                   <button
                     type="submit"
                     disabled={authLoading}
-                    className="w-full py-3 bg-teal-600 hover:bg-teal-500 disabled:opacity-50 text-white rounded-xl font-medium text-sm transition shadow-lg shadow-teal-600/30"
+                    className="w-full py-3 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white rounded-xl font-medium text-sm transition shadow-md shadow-teal-600/20"
                   >
                     {authLoading ? "Mendaftarkan..." : "Buat Akun Member"}
                   </button>
@@ -857,11 +837,11 @@ export default function PublicChatRoomPage() {
               {/* Form 4: Login Admin / Operator */}
               {activeTab === "admin" && (
                 <form onSubmit={handleAdminLogin} className="space-y-3.5 text-left">
-                  <div className="text-xs text-amber-400/90 font-medium mb-1">
+                  <div className="text-xs text-amber-700 font-medium mb-1">
                     👑 Masuk dengan akun Pemilik/Operator Proyek:
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-400 mb-1">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
                       Email Admin
                     </label>
                     <input
@@ -870,11 +850,11 @@ export default function PublicChatRoomPage() {
                       value={adminEmail}
                       onChange={(e) => setAdminEmail(e.target.value)}
                       placeholder="admin@email.com"
-                      className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-400 mb-1">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
                       Password
                     </label>
                     <input
@@ -883,13 +863,13 @@ export default function PublicChatRoomPage() {
                       value={adminPassword}
                       onChange={(e) => setAdminPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white text-sm"
                     />
                   </div>
                   <button
                     type="submit"
                     disabled={authLoading}
-                    className="w-full py-3 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white rounded-xl font-medium text-sm transition shadow-lg shadow-amber-600/30"
+                    className="w-full py-3 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl font-medium text-sm transition shadow-md shadow-amber-600/20"
                   >
                     {authLoading ? "Memverifikasi..." : "Masuk Sebagai Admin"}
                   </button>
@@ -900,12 +880,12 @@ export default function PublicChatRoomPage() {
         ) : (
           /* JIKA SUDAH JOIN: AREA CHAT GRUP */
           <>
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-slate-50/50">
               {messages.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-slate-500">
-                  <MessageSquare className="w-12 h-12 mb-3 stroke-1 text-slate-600" />
-                  <p className="text-sm font-medium">Belum ada obrolan di ruang ini</p>
-                  <p className="text-xs text-slate-600 mt-1">
+                <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                  <MessageSquare className="w-12 h-12 mb-3 stroke-1 text-slate-300" />
+                  <p className="text-sm font-medium text-slate-600">Belum ada obrolan di ruang ini</p>
+                  <p className="text-xs text-slate-400 mt-1">
                     Jadilah yang pertama menyapa semua orang di komunitas ini!
                   </p>
                 </div>
@@ -915,7 +895,7 @@ export default function PublicChatRoomPage() {
                   if (m.isSystem) {
                     return (
                       <div key={m.id} className="flex justify-center my-2">
-                        <div className="bg-slate-800/90 text-amber-300 px-4 py-1.5 rounded-full text-xs font-medium border border-amber-500/20 shadow-sm flex items-center gap-1.5">
+                        <div className="bg-amber-50 text-amber-800 px-4 py-1.5 rounded-full text-xs font-medium border border-amber-200 shadow-sm flex items-center gap-1.5">
                           {m.content}
                         </div>
                       </div>
@@ -940,18 +920,18 @@ export default function PublicChatRoomPage() {
                       <div
                         className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 ${
                           isAgent
-                            ? "bg-gradient-to-tr from-amber-500 to-indigo-600 text-white shadow-md shadow-indigo-500/20"
+                            ? "bg-amber-100 text-amber-700 border border-amber-200 shadow-sm"
                             : isMember
-                            ? "bg-gradient-to-tr from-emerald-600 to-teal-500 text-white shadow-md"
-                            : "bg-slate-800 text-slate-300 border border-slate-700"
+                            ? "bg-emerald-100 text-emerald-700 border border-emerald-200 shadow-sm"
+                            : "bg-slate-100 text-slate-700 border border-slate-200 shadow-sm"
                         }`}
                       >
                         {isAgent ? (
-                          <Crown className="w-4 h-4" />
+                          <Crown className="w-4 h-4 text-amber-600" />
                         ) : isMember ? (
-                          <Shield className="w-4 h-4" />
+                          <Shield className="w-4 h-4 text-emerald-600" />
                         ) : (
-                          <User className="w-4 h-4" />
+                          <User className="w-4 h-4 text-slate-500" />
                         )}
                       </div>
 
@@ -962,19 +942,19 @@ export default function PublicChatRoomPage() {
                             isMe ? "justify-end" : "justify-start"
                           }`}
                         >
-                          <span className="text-xs font-semibold text-slate-300">
+                          <span className="text-xs font-semibold text-slate-700">
                             {m.senderName || (isAgent ? "Admin" : "Tamu")}
                           </span>
                           {isAgent ? (
-                            <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.2 rounded font-semibold flex items-center gap-0.5">
-                              <Crown className="w-2.5 h-2.5" /> Admin
+                            <span className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.2 rounded font-semibold flex items-center gap-0.5">
+                              <Crown className="w-2.5 h-2.5 text-amber-600" /> Admin
                             </span>
                           ) : isMember ? (
-                            <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.2 rounded font-semibold flex items-center gap-0.5">
-                              <Shield className="w-2.5 h-2.5" /> Member
+                            <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.2 rounded font-semibold flex items-center gap-0.5">
+                              <Shield className="w-2.5 h-2.5 text-emerald-600" /> Member
                             </span>
                           ) : (
-                            <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.2 rounded">
+                            <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded">
                               Tamu
                             </span>
                           )}
@@ -984,9 +964,9 @@ export default function PublicChatRoomPage() {
                             <button
                               onClick={() => handleQuickBan(m.senderName)}
                               title={`Blokir "${m.senderName}"`}
-                              className="text-[10px] text-red-400 hover:text-red-300 hover:bg-red-500/20 p-0.5 rounded transition flex items-center gap-0.5 ml-1"
+                              className="text-[10px] text-red-600 hover:text-red-700 hover:bg-red-50 p-0.5 rounded transition flex items-center gap-0.5 ml-1"
                             >
-                              <Ban className="w-3 h-3 text-red-400" /> Ban
+                              <Ban className="w-3 h-3 text-red-500" /> Ban
                             </button>
                           )}
 
@@ -995,13 +975,13 @@ export default function PublicChatRoomPage() {
                             <button
                               onClick={() => handleDeleteMessage(m.id)}
                               title="Hapus pesan ini"
-                              className="text-[10px] text-slate-400 hover:text-red-400 hover:bg-red-500/20 p-0.5 rounded transition flex items-center gap-0.5 ml-0.5"
+                              className="text-[10px] text-slate-400 hover:text-red-600 hover:bg-red-50 p-0.5 rounded transition flex items-center gap-0.5 ml-0.5"
                             >
-                              <Trash2 className="w-3 h-3 text-slate-400 hover:text-red-400" /> Hapus
+                              <Trash2 className="w-3 h-3 text-slate-400 hover:text-red-500" /> Hapus
                             </button>
                           )}
 
-                          <span className="text-[10px] text-slate-500 ml-1">
+                          <span className="text-[10px] text-slate-400 ml-1">
                             {new Date(m.createdAt).toLocaleTimeString([], {
                               hour: "2-digit",
                               minute: "2-digit"
@@ -1012,11 +992,11 @@ export default function PublicChatRoomPage() {
                         {/* Bubble Chat */}
                         <div
                           className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm ${
-                            isAgent
-                              ? "bg-gradient-to-r from-indigo-950 to-slate-900 border border-indigo-500/40 text-indigo-100 rounded-tl-none"
-                              : isMe
+                            isMe
                               ? "bg-indigo-600 text-white rounded-tr-none"
-                              : "bg-slate-800 text-slate-100 border border-slate-700 rounded-tl-none"
+                              : isAgent
+                              ? "bg-amber-50 text-slate-800 border border-amber-200/90 rounded-tl-none"
+                              : "bg-white text-slate-800 border border-slate-200 rounded-tl-none"
                           }`}
                         >
                           {m.attachmentUrl && (
@@ -1025,7 +1005,7 @@ export default function PublicChatRoomPage() {
                                 src={m.attachmentUrl}
                                 alt="Lampiran"
                                 onClick={() => setLightboxImg(m.attachmentUrl!)}
-                                className="rounded-lg max-h-64 max-w-full object-cover border border-white/10 hover:opacity-90 transition cursor-pointer shadow-sm"
+                                className="rounded-lg max-h-64 max-w-full object-cover border border-slate-200 hover:opacity-95 transition cursor-pointer shadow-sm"
                                 title="Klik untuk memperbesar"
                               />
                             </div>
@@ -1041,7 +1021,7 @@ export default function PublicChatRoomPage() {
             </div>
 
             {/* INPUT BAR */}
-            <div className="p-4 bg-slate-900 border-t border-slate-800">
+            <div className="p-4 bg-white border-t border-slate-200">
               <input
                 type="file"
                 ref={fileInputRef}
@@ -1055,7 +1035,7 @@ export default function PublicChatRoomPage() {
                   disabled={uploading}
                   onClick={() => fileInputRef.current?.click()}
                   title="Unggah Foto / Gambar (Maks 2MB)"
-                  className="p-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-slate-300 hover:text-white transition flex items-center justify-center shrink-0 disabled:opacity-50"
+                  className="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-600 hover:text-indigo-600 transition flex items-center justify-center shrink-0 disabled:opacity-50"
                 >
                   <Plus className="w-4 h-4" />
                 </button>
@@ -1073,12 +1053,12 @@ export default function PublicChatRoomPage() {
                       : `Tulis pesan sebagai ${currentMember ? `@${currentMember.username}` : guestName || "Tamu"}...`
                   }
                   disabled={uploading || (slowModeCooldown > 0 && !currentAdmin)}
-                  className="flex-1 px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm disabled:opacity-60"
+                  className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-sm disabled:opacity-60"
                 />
                 <button
                   type="submit"
                   disabled={(!inputMessage.trim() && !uploading) || uploading || (slowModeCooldown > 0 && !currentAdmin)}
-                  className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-6 py-3 rounded-xl flex items-center gap-2 font-medium text-sm transition shadow-md shadow-indigo-600/30 shrink-0"
+                  className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-6 py-3 rounded-xl flex items-center gap-2 font-medium text-sm transition shadow-md shadow-indigo-600/20 shrink-0"
                 >
                   <Send className="w-4 h-4" />
                   <span className="hidden sm:inline">
@@ -1093,33 +1073,33 @@ export default function PublicChatRoomPage() {
 
       {/* MODAL MODERASI UNTUK ADMIN DI ROOM */}
       {showSettingsModal && currentAdmin && project && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh] text-slate-100">
-            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh] text-slate-800">
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/70">
               <div>
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <Settings className="w-5 h-5 text-amber-500" /> Moderasi Room (Admin)
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Settings className="w-5 h-5 text-amber-600" /> Moderasi Room (Admin)
                 </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <p className="text-xs text-slate-500 mt-0.5">
                   Proyek: {project.name}
                 </p>
               </div>
               <button
                 onClick={() => setShowSettingsModal(false)}
-                className="text-slate-400 hover:text-white text-lg p-1"
+                className="text-slate-400 hover:text-slate-700 text-lg p-1"
               >
                 ✕
               </button>
             </div>
 
-            <div className="flex border-b border-slate-800 px-6 pt-2 bg-slate-950">
+            <div className="flex border-b border-slate-200 px-6 pt-2 bg-slate-50/40">
               <button
                 type="button"
                 onClick={() => setSettingsTab("moderation")}
                 className={`py-2 px-4 font-semibold text-xs border-b-2 transition flex items-center gap-1.5 ${
                   settingsTab === "moderation"
-                    ? "border-amber-500 text-amber-400"
-                    : "border-transparent text-slate-400 hover:text-white"
+                    ? "border-amber-600 text-amber-700"
+                    : "border-transparent text-slate-500 hover:text-slate-800"
                 }`}
               >
                 <Shield className="w-4 h-4" /> Filter &amp; Slow Mode
@@ -1129,8 +1109,8 @@ export default function PublicChatRoomPage() {
                 onClick={() => setSettingsTab("banned")}
                 className={`py-2 px-4 font-semibold text-xs border-b-2 transition flex items-center gap-1.5 ${
                   settingsTab === "banned"
-                    ? "border-amber-500 text-amber-400"
-                    : "border-transparent text-slate-400 hover:text-white"
+                    ? "border-amber-600 text-amber-700"
+                    : "border-transparent text-slate-500 hover:text-slate-800"
                 }`}
               >
                 <Ban className="w-4 h-4" /> Banned Users ({bannedUsers.length})
@@ -1140,9 +1120,9 @@ export default function PublicChatRoomPage() {
             <div className="p-6 overflow-y-auto flex-1">
               {settingsTab === "moderation" ? (
                 <form onSubmit={handleSaveSettings} className="space-y-4 text-left">
-                  <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
-                    <label className="block text-xs font-bold text-white mb-1 flex items-center gap-1.5">
-                      <Clock className="w-4 h-4 text-amber-400" /> Slow Mode (Detik)
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-amber-600" /> Slow Mode (Detik)
                     </label>
                     <div className="flex items-center gap-2 mt-2">
                       <input
@@ -1150,29 +1130,29 @@ export default function PublicChatRoomPage() {
                         min="0"
                         value={slowModeSeconds}
                         onChange={(e) => setSlowModeSeconds(Number(e.target.value))}
-                        className="w-24 px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        className="w-24 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
-                      <span className="text-xs text-slate-400">detik (0 = nonaktif)</span>
+                      <span className="text-xs text-slate-500">detik (0 = nonaktif)</span>
                     </div>
                   </div>
 
-                  <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-white flex items-center gap-1.5">
-                        <AlertTriangle className="w-4 h-4 text-amber-400" /> Filter Sensor Kata Kasar
+                      <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <AlertTriangle className="w-4 h-4 text-amber-600" /> Filter Sensor Kata Kasar
                       </label>
                       <input
                         type="checkbox"
                         checked={filterEnabled}
                         onChange={(e) => setFilterEnabled(e.target.checked)}
-                        className="w-4 h-4 rounded text-amber-500 cursor-pointer"
+                        className="w-4 h-4 rounded text-amber-600 cursor-pointer"
                       />
                     </div>
 
                     {filterEnabled && (
                       <>
                         <div className="grid grid-cols-2 gap-2 mt-2">
-                          <label className="flex items-center gap-2 p-2 bg-slate-900 border border-slate-700 rounded-lg text-xs cursor-pointer">
+                          <label className="flex items-center gap-2 p-2 bg-white border border-slate-200 rounded-lg text-xs cursor-pointer">
                             <input
                               type="radio"
                               name="filterMode"
@@ -1182,7 +1162,7 @@ export default function PublicChatRoomPage() {
                             />
                             Sensor (***)
                           </label>
-                          <label className="flex items-center gap-2 p-2 bg-slate-900 border border-slate-700 rounded-lg text-xs cursor-pointer">
+                          <label className="flex items-center gap-2 p-2 bg-white border border-slate-200 rounded-lg text-xs cursor-pointer">
                             <input
                               type="radio"
                               name="filterMode"
@@ -1194,14 +1174,14 @@ export default function PublicChatRoomPage() {
                           </label>
                         </div>
                         <div>
-                          <label className="block text-xs text-slate-400 mb-1">
+                          <label className="block text-xs text-slate-600 mb-1">
                             Kata Terlarang (pisah koma):
                           </label>
                           <textarea
                             rows={3}
                             value={bannedWords}
                             onChange={(e) => setBannedWords(e.target.value)}
-                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
                           />
                         </div>
                       </>
@@ -1212,14 +1192,14 @@ export default function PublicChatRoomPage() {
                     <button
                       type="button"
                       onClick={() => setShowSettingsModal(false)}
-                      className="px-4 py-2 text-xs text-slate-400 hover:bg-slate-800 rounded-lg"
+                      className="px-4 py-2 text-xs text-slate-600 hover:bg-slate-100 rounded-lg transition"
                     >
                       Batal
                     </button>
                     <button
                       type="submit"
                       disabled={savingSettings}
-                      className="px-4 py-2 text-xs bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-medium"
+                      className="px-4 py-2 text-xs bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium shadow-sm transition"
                     >
                       {savingSettings ? "Menyimpan..." : "Simpan Pengaturan"}
                     </button>
@@ -1227,21 +1207,21 @@ export default function PublicChatRoomPage() {
                 </form>
               ) : (
                 <div className="space-y-3">
-                  <div className="divide-y divide-slate-800 border border-slate-800 rounded-xl overflow-hidden">
+                  <div className="divide-y divide-slate-200 border border-slate-200 rounded-xl overflow-hidden bg-white">
                     {bannedUsers.length === 0 ? (
-                      <div className="p-6 text-center text-xs text-slate-500">
+                      <div className="p-6 text-center text-xs text-slate-400">
                         Belum ada pengguna yang diblokir.
                       </div>
                     ) : (
                       bannedUsers.map((bu) => (
                         <div key={bu.id} className="p-3 flex items-center justify-between">
                           <div className="text-xs">
-                            <span className="font-bold text-white">{bu.username || bu.guestName}</span>
+                            <span className="font-bold text-slate-800">{bu.username || bu.guestName}</span>
                             <span className="text-[10px] text-slate-400 block">oleh {bu.bannedBy}</span>
                           </div>
                           <button
                             onClick={() => handleUnban(bu.id)}
-                            className="text-xs text-emerald-400 hover:bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/30"
+                            className="text-xs text-emerald-700 hover:bg-emerald-50 px-2 py-1 rounded border border-emerald-200 font-medium"
                           >
                             Cabut Ban
                           </button>

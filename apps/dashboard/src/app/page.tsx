@@ -216,6 +216,7 @@ function ChatDemo({ isOpen, onOpen, onClose }: { isOpen: boolean; onOpen: () => 
   const [authUsername, setAuthUsername] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [selectedImg, setSelectedImg] = useState<string | null>(null);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -279,19 +280,26 @@ function ChatDemo({ isOpen, onOpen, onClose }: { isOpen: boolean; onOpen: () => 
     setCurrentUserLabel("Tamu");
   }
 
+  function triggerErrorToast(msg: string) {
+    setErrorToast(msg);
+    setTimeout(() => {
+      setErrorToast((curr) => (curr === msg ? null : curr));
+    }, 4500);
+  }
+
   function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const allowedMimes = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"];
     if (!file.type || !allowedMimes.includes(file.type.toLowerCase())) {
-      alert("Format file tidak didukung! Hanya gambar (PNG, JPG, JPEG, WEBP, GIF) yang diperbolehkan.");
+      triggerErrorToast("Format file tidak didukung! Hanya gambar (PNG, JPG, JPEG, WEBP, GIF) yang diperbolehkan.");
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
 
     if (file.size > 2 * 1024 * 1024) {
-      alert("Ukuran file terlalu besar! Maksimal ukuran gambar adalah 2 MB.");
+      triggerErrorToast("Ukuran file terlalu besar! Maksimal ukuran gambar adalah 2 MB.");
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
@@ -448,6 +456,34 @@ function ChatDemo({ isOpen, onOpen, onClose }: { isOpen: boolean; onOpen: () => 
               </button>
             </div>
           </div>
+
+          {/* ERROR TOAST (IDENTIK DENGAN WIDGET SIMULATOR) */}
+          {errorToast && (
+            <div
+              style={{
+                padding: "8px 12px",
+                backgroundColor: "#fee2e2",
+                borderBottom: "1px solid #fecaca",
+                color: "#991b1b",
+                fontSize: "12px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                animation: "fadeIn 0.2s ease-in"
+              }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                ⚠️ {errorToast}
+              </span>
+              <button
+                type="button"
+                onClick={() => setErrorToast(null)}
+                style={{ background: "none", border: "none", color: "#b91c1c", cursor: "pointer", fontSize: "12px" }}
+              >
+                ✕
+              </button>
+            </div>
+          )}
 
           {/* BODY */}
           <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>

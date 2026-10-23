@@ -75,7 +75,14 @@ export default function DashboardPage() {
   const [bannedUsers, setBannedUsers] = useState<any[]>([]);
   const [newBanName, setNewBanName] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
-  const [errorToast, setErrorToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "error" | "success" } | null>(null);
+
+  const showToast = (message: string, type: "error" | "success" = "error") => {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast((curr) => (curr?.message === message ? null : curr));
+    }, 4500);
+  };
 
   const socketRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -274,8 +281,7 @@ export default function DashboardPage() {
 
         // 4. Error Toast
         if (data.type === "error" && data.message) {
-          setErrorToast(data.message);
-          setTimeout(() => setErrorToast(null), 5000);
+          showToast(data.message, "error");
         }
 
         // 5. Pesan Dihapus Realtime
@@ -313,13 +319,13 @@ export default function DashboardPage() {
 
     const allowedMimes = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"];
     if (!file.type || !allowedMimes.includes(file.type.toLowerCase())) {
-      alert("Format file tidak didukung! Hanya gambar (PNG, JPG, JPEG, WEBP, GIF) yang diperbolehkan.");
+      showToast("Format file tidak didukung! Hanya gambar (PNG, JPG, JPEG, WEBP, GIF) yang diperbolehkan.", "error");
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
 
     if (file.size > 2 * 1024 * 1024) {
-      alert("Ukuran file terlalu besar! Maksimal ukuran gambar adalah 2 MB.");
+      showToast("Ukuran file terlalu besar! Maksimal ukuran gambar adalah 2 MB.", "error");
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
@@ -336,7 +342,7 @@ export default function DashboardPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        alert(data.error || "Gagal mengunggah gambar!");
+        showToast(data.error || "Gagal mengunggah gambar!", "error");
         return;
       }
 
@@ -356,7 +362,7 @@ export default function DashboardPage() {
       setInputMessage("");
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (err: any) {
-      alert("Terjadi kesalahan jaringan saat mengunggah gambar: " + err.message);
+      showToast("Terjadi kesalahan jaringan saat mengunggah gambar: " + err.message, "error");
     } finally {
       setUploading(false);
     }
@@ -574,7 +580,24 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="flex h-screen bg-slate-100">
+    <div className="flex h-screen bg-slate-100 relative">
+      {/* FLOATING TOAST NOTIFICATION MODERN */}
+      {toast && (
+        <div className="fixed top-5 right-5 z-50 flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl border bg-white border-red-200 text-red-700">
+          <div className="w-8 h-8 rounded-xl bg-red-100 flex items-center justify-center shrink-0 text-red-600 font-bold">
+            ⚠️
+          </div>
+          <div className="text-xs sm:text-sm font-medium pr-2 max-w-sm">
+            {toast.message}
+          </div>
+          <button
+            onClick={() => setToast(null)}
+            className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition shrink-0"
+          >
+            ✕
+          </button>
+        </div>
+      )}
       {/* SIDEBAR: DAFTAR PROYEK (COMMUNITY ROOMS) */}
       <div className="w-80 bg-white border-r border-slate-200 flex flex-col h-full shadow-sm shrink-0">
         {/* Profile Admin Header */}
@@ -772,18 +795,6 @@ export default function DashboardPage() {
                 </a>
               </div>
             </div>
-
-            {/* Error / System Toast */}
-            {errorToast && (
-              <div className="mx-6 mt-3 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs flex items-center justify-between shadow-sm animate-fade-in">
-                <span className="flex items-center gap-1.5 font-medium">
-                  <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" /> {errorToast}
-                </span>
-                <button onClick={() => setErrorToast(null)} className="text-red-400 hover:text-red-700 text-sm">
-                  ✕
-                </button>
-              </div>
-            )}
 
             {/* Chat Area: Aliran Pesan Grup */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4">

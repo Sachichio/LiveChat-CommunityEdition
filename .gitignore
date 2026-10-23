@@ -122,3 +122,9 @@ dist
 # Uploaded Media Files
 apps/api/public/uploads/*
 !apps/api/public/uploads/.gitkeep
+
+# Internal Agent Documentation & Design Files
+dokumentasi_*.md
+arsitektur-*.md
+workflow-*.md
+desain/

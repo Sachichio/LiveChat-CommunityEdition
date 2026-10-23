@@ -311,13 +311,16 @@ export default function DashboardPage() {
     const file = e.target.files?.[0];
     if (!file || !selectedProject || !socketRef.current) return;
 
-    if (!file.type.startsWith("image/")) {
-      alert("Hanya file gambar (PNG, JPG, GIF, WEBP) yang diperbolehkan!");
+    const allowedMimes = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"];
+    if (!file.type || !allowedMimes.includes(file.type.toLowerCase())) {
+      alert("Format file tidak didukung! Hanya gambar (PNG, JPG, JPEG, WEBP, GIF) yang diperbolehkan.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      alert("Ukuran gambar terlalu besar! Maksimal 5 MB.");
+    if (file.size > 2 * 1024 * 1024) {
+      alert("Ukuran file terlalu besar! Maksimal ukuran gambar adalah 2 MB.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
 
@@ -1105,24 +1108,24 @@ export default function DashboardPage() {
                         </div>
                       </>
                     )}
+                  </div>
 
-                    {/* DANGER ZONE: HAPUS PROYEK (SELALU MUNCUL SECARA INDEPENDEN) */}
-                    <div className="p-3 bg-red-50/80 border border-red-200 rounded-xl mt-4">
-                      <h5 className="text-xs font-bold text-red-700 flex items-center gap-1">
-                        <AlertTriangle className="w-3.5 h-3.5 text-red-600" /> Danger Zone (Zona Bahaya)
-                      </h5>
-                      <p className="text-[11px] text-red-600/80 mt-1 leading-relaxed">
-                        Menghapus ruang komunitas ini akan melenyapkan seluruh riwayat pesan, anggota yang diblokir, dan pengaturannya secara permanen. Tindakan ini tidak dapat dibatalkan.
-                      </p>
-                      <div className="mt-2.5 flex justify-end">
-                        <button
-                          type="button"
-                          onClick={handleDeleteProject}
-                          className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" /> Hapus Ruang Komunitas
-                        </button>
-                      </div>
+                  {/* 3. DANGER ZONE: HAPUS PROYEK (KOTAK MANDIRI TERPISAH) */}
+                  <div className="p-4 bg-red-50/80 border border-red-200 rounded-xl space-y-2">
+                    <h5 className="text-xs font-bold text-red-700 flex items-center gap-1.5">
+                      <AlertTriangle className="w-4 h-4 text-red-600" /> Danger Zone (Zona Bahaya)
+                    </h5>
+                    <p className="text-[11px] text-red-600/90 leading-relaxed">
+                      Menghapus ruang komunitas ini akan melenyapkan seluruh riwayat pesan, anggota yang diblokir, dan pengaturannya secara permanen. Tindakan ini tidak dapat dibatalkan.
+                    </p>
+                    <div className="pt-1 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={handleDeleteProject}
+                        className="px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> Hapus Ruang Komunitas
+                      </button>
                     </div>
                   </div>
 

@@ -437,13 +437,16 @@ function LiveChatWidget() {
     const file = e.target.files?.[0];
     if (!file || !socketRef.current) return;
 
-    if (!file.type.startsWith("image/")) {
-      alert("Hanya file gambar (PNG, JPG, GIF, WEBP) yang diperbolehkan!");
+    const allowedMimes = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"];
+    if (!file.type || !allowedMimes.includes(file.type.toLowerCase())) {
+      setErrorToast("Format file tidak didukung! Hanya gambar (PNG, JPG, JPEG, WEBP, GIF) yang diperbolehkan.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      alert("Ukuran gambar terlalu besar! Maksimal 5 MB.");
+    if (file.size > 2 * 1024 * 1024) {
+      setErrorToast("Ukuran file terlalu besar! Maksimal ukuran gambar adalah 2 MB.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
 
@@ -511,23 +514,23 @@ function LiveChatWidget() {
       {isOpen && (
         <div
           style={{
-            width: "360px",
-            height: "520px",
+            width: "365px",
+            height: "530px",
             backgroundColor: "#ffffff",
-            borderRadius: "18px",
-            boxShadow: "0 12px 36px rgba(0, 0, 0, 0.18)",
+            borderRadius: "19px",
+            boxShadow: "0 23px 70px rgba(30, 45, 107, 0.22)",
             display: "flex",
             flexDirection: "column",
             overflow: "hidden",
             marginBottom: "16px",
-            border: "1px solid #e2e8f0"
+            border: "1px solid #e8ebf5"
           }}
         >
           {/* HEADER */}
           <div
             style={{
-              padding: "14px 16px",
-              backgroundColor: "#4f46e5",
+              padding: "15px 17px",
+              background: "linear-gradient(108deg, #4e60dd, #6978ed)",
               color: "#ffffff",
               display: "flex",
               alignItems: "center",
@@ -535,13 +538,14 @@ function LiveChatWidget() {
             }}
           >
             <div>
-              <div style={{ fontWeight: "bold", fontSize: "14px", display: "flex", alignItems: "center", gap: "6px" }}>
-                Komunitas LiveChat
-                <span style={{ fontSize: "10px", backgroundColor: "rgba(255,255,255,0.2)", padding: "2px 6px", borderRadius: "10px" }}>
+              <div style={{ fontWeight: 800, fontSize: "14px", display: "flex", alignItems: "center", gap: "6px", letterSpacing: "-0.02em" }}>
+                Lobbio Community
+                <span style={{ fontSize: "9px", fontWeight: 700, backgroundColor: "rgba(255,255,255,0.22)", padding: "2px 7px", borderRadius: "10px" }}>
                   Grup
                 </span>
+                <span style={{ display: "inline-block", width: "6px", height: "6px", borderRadius: "50%", backgroundColor: "#7af0b4" }} />
               </div>
-              <div style={{ fontSize: "11px", opacity: 0.85, marginTop: "2px" }}>
+              <div style={{ fontSize: "11px", color: "#e0e6ff", marginTop: "3px" }}>
                 {isJoined ? (
                   <span>
                     Sebagai: <b>{currentAdmin ? `👑 ${currentAdmin.name}` : currentMember ? `@${currentMember.username}` : guestName || "Tamu"}</b>
@@ -1068,26 +1072,40 @@ function LiveChatWidget() {
       {/* FLOATING ACTION BUTTON (FAB) */}
       <button
         onClick={handleToggle}
+        aria-label="Buka Lobbio Community Chat"
         style={{
-          width: "56px",
-          height: "56px",
-          borderRadius: "50%",
-          backgroundColor: "#4f46e5",
+          position: "relative",
+          width: "60px",
+          height: "60px",
+          borderRadius: "18px",
+          background: "linear-gradient(135deg, #6677f2, #4c5de0)",
           color: "#ffffff",
           border: "none",
-          boxShadow: "0 8px 20px rgba(79, 70, 229, 0.4)",
+          boxShadow: "0 13px 30px rgba(61, 79, 198, 0.35)",
           cursor: "pointer",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           float: "right",
-          transition: "transform 0.2s"
+          transition: "transform 0.2s ease, box-shadow 0.2s ease"
         }}
       >
+        <span
+          style={{
+            position: "absolute",
+            top: "4px",
+            right: "4px",
+            width: "12px",
+            height: "12px",
+            backgroundColor: "#53d6a0",
+            border: "2px solid #ffffff",
+            borderRadius: "50%"
+          }}
+        />
         {isOpen ? (
-          <span style={{ fontSize: "22px" }}>✕</span>
+          <span style={{ fontSize: "20px", fontWeight: "bold" }}>✕</span>
         ) : (
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
           </svg>
         )}

@@ -512,13 +512,16 @@ export default function PublicChatRoomPage() {
     const file = e.target.files?.[0];
     if (!file || !socketRef.current) return;
 
-    if (!file.type.startsWith("image/")) {
-      alert("Hanya file gambar (PNG, JPG, GIF, WEBP) yang diperbolehkan!");
+    const allowedMimes = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"];
+    if (!file.type || !allowedMimes.includes(file.type.toLowerCase())) {
+      alert("Format file tidak didukung! Hanya gambar (PNG, JPG, JPEG, WEBP, GIF) yang diperbolehkan.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      alert("Ukuran gambar terlalu besar! Maksimal 5 MB.");
+    if (file.size > 2 * 1024 * 1024) {
+      alert("Ukuran file terlalu besar! Maksimal ukuran gambar adalah 2 MB.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
 

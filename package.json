@@ -9,6 +9,7 @@
     "dev:api": "bun --filter @livechat/api dev",
     "dev:dashboard": "bun --filter @livechat/dashboard dev",
     "dev:widget": "bun --filter @livechat/widget dev",
-    "seed:admin": "bun run apps/api/src/scripts/create-admin.ts"
+    "seed:admin": "bun run apps/api/src/scripts/create-admin.ts",
+    "reset:admin": "bun run apps/api/src/scripts/reset-admin.ts"
   }
 }

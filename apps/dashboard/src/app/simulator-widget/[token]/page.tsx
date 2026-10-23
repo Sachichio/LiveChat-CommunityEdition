@@ -68,8 +68,8 @@ export default function WidgetSimulatorPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400">
-        <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4" />
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-500">
+        <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4" />
         <p className="text-sm font-medium">Memverifikasi status widget simulator...</p>
       </div>
     );
@@ -77,17 +77,17 @@ export default function WidgetSimulatorPage() {
 
   if (error || !project) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400 p-4 text-center">
-        <div className="w-16 h-16 bg-red-500/10 text-red-400 rounded-2xl flex items-center justify-center mb-4">
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-600 p-4 text-center">
+        <div className="w-16 h-16 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mb-4 shadow-sm">
           <AlertTriangle className="w-8 h-8" />
         </div>
-        <h1 className="text-xl font-bold text-white mb-2">Simulator Gagal: Widget Tidak Ditemukan</h1>
+        <h1 className="text-xl font-bold text-slate-900 mb-2">Simulator Gagal: Widget Tidak Ditemukan</h1>
         <p className="text-sm text-slate-500 max-w-sm mb-6">
           {error || "Proyek atau widget ini tidak ditemukan di server. Ruang komunitas mungkin telah dihapus secara permanen oleh Admin."}
         </p>
         <Link
           href="/dashboard"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition shadow-lg shadow-indigo-600/30"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition shadow-md shadow-indigo-600/20"
         >
           <ArrowLeft className="w-4 h-4" /> Kembali ke Dashboard
         </Link>

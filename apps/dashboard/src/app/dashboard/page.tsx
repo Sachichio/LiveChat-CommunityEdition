@@ -904,7 +904,7 @@ export default function DashboardPage() {
                 type="file"
                 ref={fileInputRef}
                 onChange={handleFileUpload}
-                accept="image/*"
+                accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
                 className="hidden"
               />
               <form onSubmit={handleSendMessage} className="flex items-center gap-2">
@@ -912,7 +912,7 @@ export default function DashboardPage() {
                   type="button"
                   disabled={uploading}
                   onClick={() => fileInputRef.current?.click()}
-                  title="Unggah Gambar (Maks 5 MB)"
+                  title="Unggah Foto / Gambar (Maks 2MB)"
                   className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 hover:text-indigo-600 transition flex items-center justify-center shrink-0 disabled:opacity-50"
                 >
                   <Plus className="w-4 h-4" />
@@ -923,7 +923,7 @@ export default function DashboardPage() {
                   onChange={(e) => setInputMessage(e.target.value)}
                   placeholder={
                     uploading
-                      ? "Sedang mengunggah gambar (maks 5MB)..."
+                      ? "Sedang mengunggah gambar (maks 2MB)..."
                       : `Ketik pesan atau command (/ban <nama>, /unban <nama>, /slow <detik>)...`
                   }
                   disabled={uploading}

@@ -1046,7 +1046,7 @@ export default function PublicChatRoomPage() {
                 type="file"
                 ref={fileInputRef}
                 onChange={handleFileUpload}
-                accept="image/*"
+                accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
                 className="hidden"
               />
               <form onSubmit={handleSendMessage} className="flex items-center gap-2">
@@ -1054,7 +1054,7 @@ export default function PublicChatRoomPage() {
                   type="button"
                   disabled={uploading}
                   onClick={() => fileInputRef.current?.click()}
-                  title="Unggah Gambar (Maks 5 MB)"
+                  title="Unggah Foto / Gambar (Maks 2MB)"
                   className="p-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-slate-300 hover:text-white transition flex items-center justify-center shrink-0 disabled:opacity-50"
                 >
                   <Plus className="w-4 h-4" />
@@ -1065,7 +1065,7 @@ export default function PublicChatRoomPage() {
                   onChange={(e) => setInputMessage(e.target.value)}
                   placeholder={
                     uploading
-                      ? "Sedang mengunggah gambar (maks 5MB)..."
+                      ? "Sedang mengunggah gambar (maks 2MB)..."
                       : slowModeCooldown > 0 && !currentAdmin
                       ? `⏳ Slow Mode: tunggu ${slowModeCooldown} detik...`
                       : currentAdmin

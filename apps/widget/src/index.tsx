@@ -1004,7 +1004,7 @@ function LiveChatWidget() {
                 type="file"
                 ref={fileInputRef}
                 onChange={handleFileUpload}
-                accept="image/*"
+                accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
                 style={{ display: "none" }}
               />
               <form onSubmit={handleSend} style={{ display: "flex", gap: "6px", alignItems: "center" }}>
@@ -1012,7 +1012,7 @@ function LiveChatWidget() {
                   type="button"
                   disabled={uploading}
                   onClick={() => fileInputRef.current?.click()}
-                  title="Unggah Gambar (Maks 5 MB)"
+                  title="Unggah Foto / Gambar (Maks 2MB)"
                   style={{
                     padding: "8px 10px",
                     backgroundColor: "#f1f5f9",
@@ -1020,6 +1020,8 @@ function LiveChatWidget() {
                     borderRadius: "8px",
                     cursor: "pointer",
                     fontSize: "14px",
+                    fontWeight: "bold",
+                    color: "#475569",
                     opacity: uploading ? 0.5 : 1
                   }}
                 >
@@ -1031,7 +1033,7 @@ function LiveChatWidget() {
                   onChange={(e) => setInputValue(e.target.value)}
                   placeholder={
                     uploading
-                      ? "Sedang mengunggah (maks 5MB)..."
+                      ? "Sedang mengunggah (maks 2MB)..."
                       : slowModeCooldown > 0 && !currentAdmin
                       ? `⏳ Tunggu ${slowModeCooldown}s...`
                       : "Ketik pesan..."

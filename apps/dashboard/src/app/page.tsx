@@ -751,15 +751,17 @@ function ChatDemo({ isOpen, onOpen, onClose }: { isOpen: boolean; onOpen: () => 
                       height: "34px",
                       borderRadius: "8px",
                       backgroundColor: "#f1f5f9",
-                      border: "none",
+                      border: "1px solid #cbd5e1",
                       cursor: "pointer",
                       fontSize: "14px",
+                      fontWeight: 600,
+                      color: "#475569",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center"
                     }}
                   >
-                    📷
+                    +
                   </button>
                   <input
                     type="text"
